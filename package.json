@@ -1,0 +1,55 @@
+{
+  "name": "qin-star-pay-be",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Qin Star Pay backend API",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --pool=threads --poolOptions.threads.singleThread=true",
+    "test:watch": "vitest",
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:seed": "tsx src/database/seed.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.15.1",
+    "pino": "^9.9.5",
+    "pino-http": "^10.5.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.37.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.18.8",
+    "@types/supertest": "^6.0.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "eslint": "^9.37.0",
+    "globals": "^16.4.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.1",
+    "vitest": "^3.2.4"
+  }
+}
