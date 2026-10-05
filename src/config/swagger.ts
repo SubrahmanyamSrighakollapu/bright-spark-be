@@ -44,6 +44,8 @@ const definition = {
     { name: 'Health', description: 'Process and database health probes.' },
     { name: 'Authentication', description: 'JWT authentication and refresh-token lifecycle.' },
     { name: 'Parties', description: 'Master Distributor, Distributor, Retailer, and Employee hierarchy management.' },
+    { name: 'Roles', description: 'Protected network roles and configurable employee roles.' },
+    { name: 'Employees', description: 'Internal employee accounts, profiles, departments, and role assignment.' },
     { name: 'Master Data', description: 'Controlled platform reference data.' },
   ],
   paths: {
@@ -155,6 +157,31 @@ const definition = {
         responses: { ...success('Master-data item created.', ref('MasterDataItem'), 201), ...protectedErrors },
       },
     },
+    [`${env.API_PREFIX}/roles/permissions`]: {
+      get: { operationId: 'listPermissions', tags: ['Roles'], summary: 'List assignable permissions', security: bearer,
+        description: 'Requires ROLE_READ.', responses: { ...success('Permissions returned.', { type: 'array', items: ref('Permission') }), ...protectedErrors } },
+    },
+    [`${env.API_PREFIX}/roles`]: {
+      get: { operationId: 'listRoles', tags: ['Roles'], summary: 'List roles', security: bearer, description: 'Requires ROLE_READ.',
+        parameters: [{ name: 'category', in: 'query', schema: ref('RoleCategory') }, { name: 'includeInactive', in: 'query', schema: { type: 'boolean', default: false } }],
+        responses: { ...success('Roles returned.', { type: 'array', items: ref('Role') }), ...protectedErrors } },
+      post: { operationId: 'createEmployeeRole', tags: ['Roles'], summary: 'Create an employee role', security: bearer,
+        description: 'Requires ROLE_CREATE. Admin-created roles are always employee roles.', requestBody: { required: true, content: json(ref('CreateRoleRequest')) },
+        responses: { ...success('Employee role created.', ref('Role'), 201), ...protectedErrors } },
+    },
+    [`${env.API_PREFIX}/roles/{id}`]: {
+      patch: { operationId: 'updateEmployeeRole', tags: ['Roles'], summary: 'Update an employee role', security: bearer,
+        description: 'Requires ROLE_UPDATE. System and network roles are protected.', parameters: [{ ...idParameter, description: 'Numeric role ID.', schema: { type: 'integer', minimum: 1 } }],
+        requestBody: { required: true, content: json(ref('UpdateRoleRequest')) }, responses: { ...success('Employee role updated.', ref('Role')), ...protectedErrors, '404': { $ref: '#/components/responses/NotFound' }, '409': { $ref: '#/components/responses/Conflict' } } },
+    },
+    [`${env.API_PREFIX}/employees`]: {
+      get: { operationId: 'listEmployees', tags: ['Employees'], summary: 'List employees', security: bearer, description: 'Requires EMPLOYEE_READ.',
+        parameters: [{ name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } }, { name: 'departmentCode', in: 'query', schema: { type: 'string' } }, { name: 'roleId', in: 'query', schema: { type: 'integer', minimum: 1 } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED'] } }, { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } }, { name: 'pageSize', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } }],
+        responses: { ...success('Employee page returned.', ref('EmployeePage')), ...protectedErrors } },
+      post: { operationId: 'createEmployee', tags: ['Employees'], summary: 'Create an employee account', security: bearer,
+        description: 'Requires EMPLOYEE_CREATE. User, employee profile, employee role assignment, and audit event are committed atomically.',
+        requestBody: { required: true, content: json(ref('CreateEmployeeRequest')) }, responses: { ...success('Employee created.', ref('Employee'), 201), ...protectedErrors, '409': { $ref: '#/components/responses/Conflict' } } },
+    },
     [`${env.API_PREFIX}/master-data/item/{id}`]: {
       patch: {
         operationId: 'updateMasterData', tags: ['Master Data'], summary: 'Update a master-data item', security: bearer,
@@ -197,6 +224,14 @@ const definition = {
       MasterDataItem: { type: 'object', required: ['id', 'category', 'code', 'label', 'sortOrder', 'isActive', 'createdAt', 'updatedAt'], properties: { id: { type: 'string', format: 'uuid' }, category: { type: 'string' }, code: { type: 'string' }, label: { type: 'string' }, description: { type: ['string', 'null'] }, configuration: {}, sortOrder: { type: 'integer', minimum: 0 }, isActive: { type: 'boolean' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
       CreateMasterDataRequest: { type: 'object', required: ['code', 'label'], properties: { code: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Z0-9_-]+$' }, label: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: 'string', maxLength: 1000 }, configuration: { type: 'object', additionalProperties: true }, sortOrder: { type: 'integer', minimum: 0, default: 0 }, isActive: { type: 'boolean', default: true } } },
       UpdateMasterDataRequest: { type: 'object', required: ['versionReason'], properties: { code: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Z0-9_-]+$' }, label: { type: 'string', minLength: 1, maxLength: 200 }, description: { type: 'string', maxLength: 1000 }, configuration: { type: 'object', additionalProperties: true }, sortOrder: { type: 'integer', minimum: 0 }, isActive: { type: 'boolean' }, versionReason: { type: 'string', minLength: 3, maxLength: 500 } } },
+      RoleCategory: { type: 'string', enum: ['SYSTEM', 'NETWORK', 'EMPLOYEE'] },
+      Permission: { type: 'object', required: ['code', 'module', 'action'], properties: { code: { type: 'string' }, module: { type: 'string' }, action: { type: 'string' }, description: { type: ['string', 'null'] } } },
+      Role: { type: 'object', required: ['id', 'code', 'name', 'category', 'isSystem', 'isActive', 'assignedUserCount', 'permissions'], properties: { id: { type: 'integer' }, code: { type: 'string' }, name: { type: 'string' }, description: { type: ['string', 'null'] }, category: ref('RoleCategory'), isSystem: { type: 'boolean' }, isActive: { type: 'boolean' }, assignedUserCount: { type: 'integer' }, permissions: { type: 'array', items: { type: 'string' } } } },
+      CreateRoleRequest: { type: 'object', required: ['code', 'name', 'permissionCodes'], properties: { code: { type: 'string', pattern: '^[A-Z][A-Z0-9_]*$' }, name: { type: 'string', minLength: 2, maxLength: 100 }, description: { type: 'string', maxLength: 500 }, permissionCodes: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string' } } } },
+      UpdateRoleRequest: { type: 'object', required: ['reason'], properties: { name: { type: 'string' }, description: { type: ['string', 'null'] }, permissionCodes: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string' } }, isActive: { type: 'boolean' }, reason: { type: 'string', minLength: 3, maxLength: 500 } } },
+      Employee: { type: 'object', required: ['id', 'userId', 'employeeCode', 'fullName', 'email', 'departmentCode', 'employmentStatus', 'role'], properties: { id: { type: 'string', format: 'uuid' }, userId: { type: 'string', format: 'uuid' }, employeeCode: { type: 'string' }, fullName: { type: 'string' }, email: { type: 'string', format: 'email' }, mobile: { type: ['string', 'null'] }, accountStatus: { type: 'string' }, departmentCode: { type: 'string' }, designation: { type: ['string', 'null'] }, managerUserId: { type: ['string', 'null'], format: 'uuid' }, joiningDate: { type: ['string', 'null'], format: 'date' }, employmentStatus: { type: 'string' }, role: { type: 'object', properties: { id: { type: 'integer' }, code: { type: 'string' }, name: { type: 'string' } } } } },
+      EmployeePage: { type: 'object', required: ['items', 'pagination'], properties: { items: { type: 'array', items: ref('Employee') }, pagination: { type: 'object', required: ['page', 'pageSize', 'totalItems', 'totalPages'], properties: { page: { type: 'integer' }, pageSize: { type: 'integer' }, totalItems: { type: 'integer' }, totalPages: { type: 'integer' } } } } },
+      CreateEmployeeRequest: { type: 'object', required: ['employeeCode', 'fullName', 'email', 'password', 'departmentCode', 'roleId'], properties: { employeeCode: { type: 'string', pattern: '^[A-Z0-9_-]+$' }, fullName: { type: 'string' }, email: { type: 'string', format: 'email' }, mobile: { type: 'string' }, password: { type: 'string', format: 'password', minLength: 12, writeOnly: true }, departmentCode: { type: 'string' }, roleId: { type: 'integer', minimum: 1 }, designation: { type: 'string' }, managerUserId: { type: 'string', format: 'uuid' }, joiningDate: { type: 'string', format: 'date' } } },
     },
   },
 };

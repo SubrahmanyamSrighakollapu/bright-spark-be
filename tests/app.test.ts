@@ -24,12 +24,23 @@ describe('API shell', () => {
     const response = await request(app).get('/api-docs.json');
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe('3.1.0');
-    expect(Object.keys(response.body.paths)).toHaveLength(12);
+    expect(Object.keys(response.body.paths)).toHaveLength(16);
     const operationCount = Object.values(response.body.paths as Record<string, object>)
       .reduce((count, pathItem) => count + Object.keys(pathItem).filter((key) => ['get', 'post', 'put', 'patch', 'delete'].includes(key)).length, 0);
-    expect(operationCount).toBe(14);
+    expect(operationCount).toBe(20);
     expect(response.body.paths['/api/v1/parties'].post.security).toEqual([{ bearerAuth: [] }]);
     expect(response.body.paths['/api/v1/master-data/item/{id}'].patch.requestBody).toBeTruthy();
+    expect(response.body.paths['/api/v1/roles'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/employees'].post.requestBody).toBeTruthy();
+  });
+
+  it('protects role and employee management routes', async () => {
+    const [roles, employees] = await Promise.all([
+      request(app).get('/api/v1/roles'),
+      request(app).get('/api/v1/employees'),
+    ]);
+    expect(roles.status).toBe(401);
+    expect(employees.status).toBe(401);
   });
 
   it('rejects protected routes without a bearer token', async () => {

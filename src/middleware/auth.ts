@@ -19,7 +19,7 @@ export function authenticate(request: Request, _response: Response, next: NextFu
 export function requirePermission(...required: string[]) {
   return (request: Request, _response: Response, next: NextFunction): void => {
     if (!request.auth) return next(new ApiError(401, 'AUTHENTICATION_REQUIRED', 'Authentication is required'));
-    if (request.auth.roles.includes('SUPER_ADMIN') || required.every((permission) => request.auth?.permissions.includes(permission))) {
+    if (request.auth.roles.includes('ADMIN') || required.every((permission) => request.auth?.permissions.includes(permission))) {
       next();
       return;
     }

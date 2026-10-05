@@ -18,15 +18,21 @@ Baseline generated from the active Express registrations and the centralized Ope
 | GET | `/api/v1/master-data/{category}` | Master Data | Bearer JWT | `MASTER_DATA_READ` | Documented |
 | POST | `/api/v1/master-data/{category}` | Master Data | Bearer JWT | `MASTER_DATA_WRITE` | Documented |
 | PATCH | `/api/v1/master-data/item/{id}` | Master Data | Bearer JWT | `MASTER_DATA_WRITE` | Documented |
+| GET | `/api/v1/roles/permissions` | Roles | Bearer JWT | `ROLE_READ` | Documented |
+| GET | `/api/v1/roles` | Roles | Bearer JWT | `ROLE_READ` | Documented |
+| POST | `/api/v1/roles` | Roles | Bearer JWT | `ROLE_CREATE` | Documented |
+| PATCH | `/api/v1/roles/{id}` | Roles | Bearer JWT | `ROLE_UPDATE` | Documented |
+| GET | `/api/v1/employees` | Employees | Bearer JWT | `EMPLOYEE_READ` | Documented |
+| POST | `/api/v1/employees` | Employees | Bearer JWT | `EMPLOYEE_CREATE` | Documented |
 
 ## Baseline totals
 
-- Active API operations: 14
-- Documented API operations: 14
+- Active API operations: 20
+- Documented API operations: 20
 - Partially documented operations: 0
 - Undocumented operations: 0
 - Stale documented operations: 0
-- Unique OpenAPI paths: 12
+- Unique OpenAPI paths: 16
 
 ## Modules not implemented yet
 

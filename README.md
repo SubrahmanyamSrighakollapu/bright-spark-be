@@ -78,6 +78,12 @@ Use `npm run db:migrate` as the normal table-creation method. It executes migrat
 | GET | `/api/v1/master-data/:category` | List master data |
 | POST | `/api/v1/master-data/:category` | Create master data |
 | PATCH | `/api/v1/master-data/item/:id` | Update master data |
+| GET | `/api/v1/roles/permissions` | List assignable permissions |
+| GET | `/api/v1/roles` | List system, network, and employee roles |
+| POST | `/api/v1/roles` | Create a configurable employee role |
+| PATCH | `/api/v1/roles/:id` | Update a configurable employee role |
+| GET | `/api/v1/employees` | Search and paginate employees |
+| POST | `/api/v1/employees` | Atomically create an employee account and profile |
 
 See `/api-docs` or `/api-docs.json` for the authoritative request and response contract.
 

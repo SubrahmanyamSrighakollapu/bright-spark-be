@@ -8,9 +8,12 @@ export const notFoundHandler: RequestHandler = (request, _response, next) => {
 
 export const errorHandler: ErrorRequestHandler = (error: unknown, request, response, next) => {
   void next;
+  const databaseCode = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined;
   const apiError = error instanceof ApiError
     ? error
-    : new ApiError(500, 'INTERNAL_SERVER_ERROR', 'An unexpected error occurred');
+    : databaseCode === 'ER_DUP_ENTRY'
+      ? new ApiError(409, 'DUPLICATE_RESOURCE', 'A record with the same unique identifier already exists')
+      : new ApiError(500, 'INTERNAL_SERVER_ERROR', 'An unexpected error occurred');
 
   if (apiError.statusCode >= 500) {
     logger.error({ err: error, requestId: request.requestId }, 'Request failed');

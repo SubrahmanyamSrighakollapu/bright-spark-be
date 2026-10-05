@@ -1,0 +1,23 @@
+import { z } from 'zod';
+
+export const listEmployeesSchema = z.object({
+  search: z.string().trim().max(100).optional(),
+  departmentCode: z.string().trim().max(100).optional(),
+  roleId: z.coerce.number().int().positive().optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const createEmployeeSchema = z.object({
+  employeeCode: z.string().trim().min(2).max(50).regex(/^[A-Z0-9_-]+$/),
+  fullName: z.string().trim().min(2).max(160),
+  email: z.string().trim().email().max(254),
+  mobile: z.string().trim().regex(/^\+?[1-9]\d{7,14}$/).optional(),
+  password: z.string().min(12).max(128),
+  departmentCode: z.string().trim().min(2).max(100).regex(/^[A-Z0-9_-]+$/),
+  roleId: z.number().int().positive(),
+  designation: z.string().trim().max(120).optional(),
+  managerUserId: z.string().uuid().optional(),
+  joiningDate: z.string().date().optional(),
+});
