@@ -70,8 +70,6 @@ employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEm
     await connection.execute(`INSERT INTO employee_profiles
       (id, user_id, employee_code, department_code, designation, manager_user_id, joining_date, created_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [employeeId, userId, input.employeeCode, input.departmentCode, input.designation ?? null, input.managerUserId ?? null, input.joiningDate ?? null, request.auth!.userId]);
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, after_data)
-      VALUES (?, 'EMPLOYEE_CREATED', 'EMPLOYEE', ?, 'SUCCESS', ?)`, [request.auth!.userId, employeeId, JSON.stringify({ userId, employeeCode: input.employeeCode, roleId: input.roleId })]);
   });
   const [rows] = await pool.query<EmployeeRow[]>(`${employeeSelect} WHERE ep.id = ?`, [employeeId]);
   return sendSuccess(response, mapEmployee(rows[0]!), 201);

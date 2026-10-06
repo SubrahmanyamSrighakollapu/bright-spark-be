@@ -88,8 +88,6 @@ roleRouter.patch('/:id', requirePermission('ROLE_UPDATE'), validate(roleIdSchema
       await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [id]);
       for (const permission of permissions) await connection.execute('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)', [id, permission.id]);
     }
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, metadata)
-      VALUES (?, 'ROLE_UPDATED', 'ROLE', ?, 'SUCCESS', ?)`, [request.auth!.userId, String(id), JSON.stringify({ reason: input.reason })]);
   });
   const [rows] = await pool.query<RoleRow[]>(`${roleSelect} WHERE r.id = ? GROUP BY r.id`, [id]);
   return sendSuccess(response, mapRole(rows[0]!));

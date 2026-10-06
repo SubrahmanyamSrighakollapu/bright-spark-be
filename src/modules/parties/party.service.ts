@@ -94,12 +94,7 @@ export async function createParty(input: z.infer<typeof createPartySchema>, acto
       `INSERT INTO parties (id, party_type, code, display_name, legal_name, email, mobile, parent_party_id, approval_status, account_status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_APPROVAL', 'PENDING')`,
       [id, input.partyType, input.code, input.displayName, input.legalName ?? null, input.email ?? null, input.mobile ?? null, input.parentPartyId ?? null],
-    );
-    await connection.execute(
-      `INSERT INTO audit_logs (request_id, actor_user_id, action, resource_type, resource_id, outcome, after_data)
-       VALUES (NULL, ?, 'CREATE', 'PARTY', ?, 'SUCCESS', ?)`,
-      [actorUserId, id, JSON.stringify(input)],
-    );
+     );
   });
   return getParty(id);
 }
@@ -111,11 +106,6 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
       [status, id, version],
     );
     if (result.affectedRows !== 1) throw new ApiError(409, 'STALE_PARTY_VERSION', 'Party was updated by another request; reload and retry');
-    await connection.execute(
-      `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, metadata)
-       VALUES (?, 'STATUS_CHANGE', 'PARTY', ?, 'SUCCESS', ?)`,
-      [actorUserId, id, JSON.stringify({ status, reason })],
-    );
   });
   return getParty(id);
 }
