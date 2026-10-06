@@ -92,3 +92,26 @@ roleRouter.patch('/:id', requirePermission('ROLE_UPDATE'), validate(roleIdSchema
   const [rows] = await pool.query<RoleRow[]>(`${roleSelect} WHERE r.id = ? GROUP BY r.id`, [id]);
   return sendSuccess(response, mapRole(rows[0]!));
 }));
+
+roleRouter.delete('/:id', requirePermission('ROLE_UPDATE'), validate(roleIdSchema, 'params'), asyncHandler(async (request, response) => {
+  const id = Number(request.params.id);
+  await withTransaction(async (connection) => {
+    const [roles] = await connection.query<(RowDataPacket & { is_system: number; role_category: string })[]>(
+      'SELECT is_system, role_category FROM roles WHERE id = ? FOR UPDATE', [id]
+    );
+    const role = roles[0];
+    if (!role) throw new ApiError(404, 'ROLE_NOT_FOUND', 'Role was not found');
+    if (role.is_system) throw new ApiError(409, 'SYSTEM_ROLE_PROTECTED', 'System roles cannot be deleted');
+
+    const [users] = await connection.query<(RowDataPacket & { count: number })[]>(
+      'SELECT COUNT(*) as count FROM user_roles WHERE role_id = ?', [id]
+    );
+    if (users[0] && users[0].count > 0) {
+      throw new ApiError(409, 'ROLE_IN_USE', 'Cannot delete role with active assigned users');
+    }
+
+    await connection.execute('DELETE FROM role_permissions WHERE role_id = ?', [id]);
+    await connection.execute('DELETE FROM roles WHERE id = ?', [id]);
+  });
+  return sendSuccess(response, { message: 'Role deleted successfully', id });
+}));
