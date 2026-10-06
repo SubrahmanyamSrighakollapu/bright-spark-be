@@ -9,7 +9,7 @@ const envSchema = z.object({
   DATABASE_HOST: z.string().min(1).default('127.0.0.1'),
   DATABASE_PORT: z.coerce.number().int().positive().default(3306),
   DATABASE_NAME: z.string().min(1).default('qin_star_pay'),
-  DATABASE_USER: z.string().min(1).default('qin_star_pay'),
+  DATABASE_USER: z.string().min(1).default('root'),
   DATABASE_PASSWORD: z.string().default(''),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
   JWT_ACCESS_SECRET: z.string().min(32).default('development-access-secret-change-me-123456'),
@@ -20,7 +20,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default('info'),
   SWAGGER_ENABLED: z.enum(['true', 'false']).optional().transform((value) => value === undefined ? undefined : value === 'true'),
   SEED_ADMIN_EMAIL: z.string().email().default('admin@qinstarpay.com'),
-  SEED_ADMIN_PASSWORD: z.string().min(12).default('ChangeThisBeforeUse123!'),
+  SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeThisBeforeUse123!'),
 });
 
 const parsed = envSchema.safeParse(process.env);
