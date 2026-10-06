@@ -163,15 +163,18 @@ async function seed(): Promise<void> {
     }
 
     // 5. System Platform Party
-    const platformId = randomUUID();
-    await connection.execute(
-      `INSERT INTO parties (id, party_type, code, display_name, legal_name, approval_status, account_status, kyc_status)
-       VALUES (?, 'PLATFORM', 'QSP', 'Qin Star Pay', 'Qin Star Pay', 'APPROVED', 'ACTIVE', 'APPROVED')
-       ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
-      [platformId]
-    );
     const [platformRows] = await connection.query<(RowDataPacket & { id: string })[]>('SELECT id FROM parties WHERE code = ?', ['QSP']);
-    const qspPartyId = platformRows[0]!.id;
+    let qspPartyId: string;
+    if (platformRows[0]) {
+      qspPartyId = platformRows[0].id;
+    } else {
+      qspPartyId = randomUUID();
+      await connection.execute(
+        `INSERT INTO parties (id, party_type, code, display_name, legal_name, approval_status, account_status, kyc_status)
+         VALUES (?, 'PLATFORM', 'QSP', 'Qin Star Pay', 'Qin Star Pay', 'APPROVED', 'ACTIVE', 'APPROVED')`,
+        [qspPartyId]
+      );
+    }
 
     // 6. Super Admin User
     const adminUserId = randomUUID();
@@ -179,7 +182,7 @@ async function seed(): Promise<void> {
     await connection.execute(
       `INSERT INTO users (id, party_id, email, full_name, password_hash, status)
        VALUES (?, ?, ?, 'Qin Star Pay Super Admin', ?, 'ACTIVE')
-       ON DUPLICATE KEY UPDATE full_name = VALUES(full_name)`,
+       ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), password_hash = VALUES(password_hash), status = 'ACTIVE'`,
       [adminUserId, qspPartyId, env.SEED_ADMIN_EMAIL, adminPasswordHash]
     );
     const [adminUserRows] = await connection.query<(RowDataPacket & { id: string })[]>('SELECT id FROM users WHERE email = ?', [env.SEED_ADMIN_EMAIL]);
@@ -246,7 +249,7 @@ async function seed(): Promise<void> {
       await connection.execute(
         `INSERT INTO users (id, party_id, email, mobile, full_name, password_hash, status)
          VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE')
-         ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), status = 'ACTIVE'`,
+         ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), status = 'ACTIVE', password_hash = VALUES(password_hash)`,
         [newUserId, partyId, u.email, u.mobile, u.fullName, demoPasswordHash]
       );
       const [usrRows] = await connection.query<(RowDataPacket & { id: string })[]>(
