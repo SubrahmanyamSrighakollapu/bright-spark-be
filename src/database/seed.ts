@@ -276,6 +276,66 @@ async function seed(): Promise<void> {
         );
       }
     }
+
+    // 9. Integration Providers Seeding
+    const seedProviders = [
+      ['AIRTEL', 'Airtel Payments Bank Gateway', 'MULTI_SERVICE', 'SANDBOX', 'ACTIVE', 'https://api-sandbox.airtel.in/v1'],
+      ['JIO', 'Jio Digital Services Gateway', 'MULTI_SERVICE', 'SANDBOX', 'ACTIVE', 'https://partner.jio.com/api/v1'],
+      ['PAYTM', 'Paytm Payments Gateway & BBPS', 'PAY_IN', 'PRODUCTION', 'ACTIVE', 'https://securegw.paytm.in/v1'],
+      ['RAZORPAY', 'Razorpay Payouts Gateway', 'PAY_OUT', 'PRODUCTION', 'ACTIVE', 'https://api.razorpay.com/v1'],
+      ['ICICI_BBPS', 'ICICI Bank BBPS Biller System', 'PAY_IN', 'PRODUCTION', 'ACTIVE', 'https://bbps.icicibank.com/v2'],
+      ['CASHFREE', 'Cashfree Instant Payout Engine', 'PAY_OUT', 'SANDBOX', 'ACTIVE', 'https://payout-api.cashfree.com/v1'],
+      ['PAYSPRINT', 'Paysprint AEPS & DMT Gateway', 'MULTI_SERVICE', 'PRODUCTION', 'ACTIVE', 'https://api.paysprint.in/v1'],
+      ['CYBERPLAT', 'Cyberplat Utility Payment Services', 'MULTI_SERVICE', 'SANDBOX', 'ACTIVE', 'https://cyberplat.in/api'],
+    ] as const;
+
+    for (const [code, name, type, env, status, url] of seedProviders) {
+      await connection.execute(
+        `INSERT INTO providers (id, code, name, provider_type, environment, status, base_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), provider_type = VALUES(provider_type), environment = VALUES(environment), status = VALUES(status), base_url = VALUES(base_url)`,
+        [randomUUID(), code, name, type, env, status, url]
+      );
+    }
+
+    // 10. Pricing & Retailer Plans Seeding
+    const seedPlans = [
+      ['DEFAULT_RETAILER', 'Standard Retailer Plan', 1, 'ACTIVE'],
+      ['GOLD_COMMISSION', 'Gold Retailer Plan', 1, 'ACTIVE'],
+      ['PLATINUM_COMMISSION', 'Platinum Partner Plan', 1, 'ACTIVE'],
+    ] as const;
+
+    for (const [code, name, version, status] of seedPlans) {
+      await connection.execute(
+        `INSERT INTO pricing_plans (id, code, name, version, status)
+         VALUES (?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status)`,
+        [randomUUID(), code, name, version, status]
+      );
+    }
+
+    // 11. Service Categories & Headlines Master Data Seeding
+    const seedMasterItems = [
+      ['SERVICE_CATEGORY', 'MOBILE_RECHARGE', 'Mobile Prepaid & Postpaid', 'Telecom recharge and bill payment services', 10],
+      ['SERVICE_CATEGORY', 'DTH', 'DTH Recharge', 'Direct-to-home TV subscription payments', 20],
+      ['SERVICE_CATEGORY', 'BBPS', 'BBPS Utility Bills', 'Electricity, Water, Gas & Broadband bill payments', 30],
+      ['SERVICE_CATEGORY', 'AEPS', 'Aadhaar Enabled Payment (AEPS)', 'Biometric cash withdrawal and mini-statement', 40],
+      ['SERVICE_CATEGORY', 'MONEY_TRANSFER', 'Domestic Money Transfer (DMT)', 'Instant IMPS/NEFT fund transfer to any bank', 50],
+      ['SERVICE_CATEGORY', 'PAYOUTS', 'Payouts & Vendor Settlement', 'Automated bulk merchant payouts', 60],
+      ['SERVICE_CATEGORY', 'PAN_CARD', 'PAN Card Services', 'NSDL & UTI PAN application processing', 70],
+      ['HEADLINE', 'HL_001', 'System Maintenance Scheduled', 'Scheduled system maintenance on Sunday from 02:00 AM to 04:00 AM IST.', 10],
+      ['NOTICE_BOARD', 'NB_001', 'New ICICI BBPS Biller Added', 'Electricity bill payment for TNEB and UPVCL is now live with instant confirmation.', 20],
+      ['TICKER', 'TK_001', 'High Commission Surcharge Offer', 'Earn up to 0.80% extra margin on AEPS transaction volumes exceeding 50,000 INR today!', 30],
+    ] as const;
+
+    for (const [cat, code, label, desc, sort] of seedMasterItems) {
+      await connection.execute(
+        `INSERT INTO master_data (id, category, code, label, description, sort_order, is_active, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, TRUE, ?)
+         ON DUPLICATE KEY UPDATE label = VALUES(label), description = VALUES(description), sort_order = VALUES(sort_order), is_active = TRUE`,
+        [randomUUID(), cat, code, label, desc, sort, adminId]
+      );
+    }
   });
 }
 

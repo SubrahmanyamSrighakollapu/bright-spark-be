@@ -21,3 +21,8 @@ export const createEmployeeSchema = z.object({
   managerUserId: z.string().uuid().optional(),
   joiningDate: z.string().date().optional(),
 });
+
+export const updateEmployeeStatusSchema = z.object({
+  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED', 'TERMINATED']),
+});
+

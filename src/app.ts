@@ -16,6 +16,12 @@ import { masterDataRouter } from './modules/master-data/master-data.routes.js';
 import { partyRouter } from './modules/parties/party.routes.js';
 import { roleRouter } from './modules/roles/role.routes.js';
 import { employeeRouter } from './modules/employees/employee.routes.js';
+import { userRouter } from './modules/users/user.routes.js';
+import { providerRouter } from './modules/providers/provider.routes.js';
+import { serviceCategoryRouter } from './modules/service-categories/service-category.routes.js';
+import { planRouter } from './modules/plans/plan.routes.js';
+import { headlineRouter } from './modules/headlines/headline.routes.js';
+import { settingRouter } from './modules/settings/setting.routes.js';
 
 export function createApp() {
   const app = express();
@@ -38,10 +44,16 @@ export function createApp() {
 
   app.use('/health', healthRouter);
   app.use(`${env.API_PREFIX}/auth`, authRouter);
+  app.use(`${env.API_PREFIX}/users`, userRouter);
   app.use(`${env.API_PREFIX}/parties`, partyRouter);
   app.use(`${env.API_PREFIX}/master-data`, masterDataRouter);
   app.use(`${env.API_PREFIX}/roles`, roleRouter);
   app.use(`${env.API_PREFIX}/employees`, employeeRouter);
+  app.use(`${env.API_PREFIX}/providers`, providerRouter);
+  app.use(`${env.API_PREFIX}/service-categories`, serviceCategoryRouter);
+  app.use(`${env.API_PREFIX}/plans`, planRouter);
+  app.use(`${env.API_PREFIX}/headlines`, headlineRouter);
+  app.use(`${env.API_PREFIX}/settings`, settingRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;
