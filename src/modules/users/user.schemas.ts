@@ -46,3 +46,27 @@ export const walletHoldSchema = z.object({
   remarks: z.string().optional(),
   reason: z.string().optional(),
 });
+
+export const updateUserSchema = z.object({
+  fullName: z.string().min(2).max(160).optional(),
+  email: z.string().email().optional(),
+  mobile: z.string().min(10).max(15).optional(),
+  displayName: z.string().min(2).max(160).optional(),
+  legalName: z.string().optional(),
+  status: z.enum(['ACTIVE', 'PENDING', 'SUSPENDED', 'INACTIVE', 'DISABLED', 'BLOCKED']).optional(),
+});
+
+export const blockUserSchema = z.object({
+  reason: z.string().optional(),
+});
+
+export const resetPasswordSchema = z.object({
+  mode: z.enum(['LINK', 'TEMP_PASSWORD']).default('LINK'),
+});
+
+export const swapUserRoleSchema = z.object({
+  role: z.enum(['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER']),
+  parentPartyId: z.string().optional(),
+  reason: z.string().optional(),
+});
+

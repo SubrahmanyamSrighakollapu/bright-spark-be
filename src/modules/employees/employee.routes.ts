@@ -65,8 +65,27 @@ employeeRouter.get('/', requirePermission('EMPLOYEE_READ'), validate(listEmploye
 employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEmployeeSchema), asyncHandler(async (request, response) => {
   const input = createEmployeeSchema.parse(request.body);
   const employeeId = randomUUID(); const userId = randomUUID();
-  const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+  const last4 = input.mobile && input.mobile.length >= 4 ? input.mobile.slice(-4) : '1234';
+  const rawPassword = input.password || `QinStarEmp@${last4}`;
+  const passwordHash = await bcrypt.hash(rawPassword, env.BCRYPT_ROUNDS);
   await withTransaction(async (connection) => {
+    // Check duplicate email or mobile
+    const [existingUsers] = await connection.query<RowDataPacket[]>(
+      'SELECT id FROM users WHERE (email = ? OR (mobile IS NOT NULL AND mobile = ?)) AND deleted_at IS NULL LIMIT 1',
+      [input.email.toLowerCase(), input.mobile ?? '']
+    );
+    if (existingUsers[0]) {
+      throw new ApiError(409, 'USER_EXISTS', 'An account with this email address or mobile number already exists');
+    }
+    // Check duplicate employee code
+    const [existingEmpCode] = await connection.query<RowDataPacket[]>(
+      'SELECT id FROM employee_profiles WHERE employee_code = ? LIMIT 1',
+      [input.employeeCode]
+    );
+    if (existingEmpCode[0]) {
+      throw new ApiError(409, 'EMPLOYEE_CODE_EXISTS', 'An employee profile with this Employee Code already exists');
+    }
+
     const [roles] = await connection.query<(RowDataPacket & { id: number })[]>(
       "SELECT id FROM roles WHERE id = ? AND role_category = 'EMPLOYEE' AND is_active = TRUE FOR UPDATE", [input.roleId],
     );

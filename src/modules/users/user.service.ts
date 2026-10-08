@@ -7,6 +7,8 @@ import type { z } from 'zod';
 import type {
   createUserSchema,
   listUsersSchema,
+  updateUserSchema,
+  swapUserRoleSchema,
   walletCreditDebitSchema,
   walletHoldSchema,
 } from './user.schemas.js';
@@ -208,31 +210,35 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
   const partyCode = generatePartyCode(input.role);
 
   await withTransaction(async (connection) => {
+    let finalParentPartyId = input.parentPartyId;
+
     // Parent hierarchy validation
-    if (input.parentPartyId) {
+    if (finalParentPartyId) {
       const [parents] = await connection.query<
         (RowDataPacket & { id: string; party_type: string; account_status: string })[]
       >('SELECT id, party_type, account_status FROM parties WHERE (id = ? OR code = ?) AND deleted_at IS NULL FOR UPDATE', [
-        input.parentPartyId,
-        input.parentPartyId,
+        finalParentPartyId,
+        finalParentPartyId,
       ]);
       const parent = parents[0];
       if (!parent) throw new ApiError(422, 'INVALID_PARENT', 'Parent party was not found');
-      if (
-        (input.role === 'DISTRIBUTOR' && parent.party_type !== 'MASTER_DISTRIBUTOR') ||
-        (input.role === 'RETAILER' && parent.party_type !== 'DISTRIBUTOR')
-      ) {
-        throw new ApiError(
-          422,
-          'INVALID_HIERARCHY',
-          `${input.role} cannot be created under parent type ${parent.party_type}`
-        );
-      }
       if (parent.account_status !== 'ACTIVE') {
         throw new ApiError(422, 'PARENT_NOT_ACTIVE', 'Parent party must be active');
       }
-    } else if (input.role === 'DISTRIBUTOR' || input.role === 'RETAILER') {
-      throw new ApiError(422, 'PARENT_REQUIRED', `${input.role} requires an assigned parent party`);
+    } else {
+      // Default to logged-in admin's party ID or top platform party
+      const [actorParties] = await connection.query<(RowDataPacket & { party_id: string })[]>(
+        'SELECT party_id FROM users WHERE id = ? LIMIT 1',
+        [actorUserId]
+      );
+      if (actorParties[0]?.party_id) {
+        finalParentPartyId = actorParties[0].party_id;
+      } else {
+        const [topParties] = await connection.query<(RowDataPacket & { id: string })[]>(
+          "SELECT id FROM parties WHERE party_type IN ('PLATFORM', 'ADMIN') LIMIT 1"
+        );
+        finalParentPartyId = topParties[0]?.id;
+      }
     }
 
     // Check duplicate email or mobile
@@ -263,12 +269,14 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
         input.legalName ?? input.displayName,
         input.email,
         input.mobile,
-        input.parentPartyId ?? null,
+        finalParentPartyId ?? null,
       ]
     );
 
-    // Hash password
-    const passwordHash = await bcrypt.hash(input.password || 'Demo@123456', 12);
+    // Auto-generate temporary password: QinStar@ + last 4 digits of mobile
+    const last4 = input.mobile && input.mobile.length >= 4 ? input.mobile.slice(-4) : '1234';
+    const generatedTempPassword = input.password || `QinStar@${last4}`;
+    const passwordHash = await bcrypt.hash(generatedTempPassword, 12);
 
     // Create user
     await connection.execute(
@@ -586,3 +594,130 @@ export async function holdWalletFunds(
     },
   };
 }
+
+export async function updateUser(
+  id: string,
+  input: z.infer<typeof updateUserSchema>,
+  actorUserId: string
+) {
+  const user = await getUserById(id);
+
+  await withTransaction(async (connection) => {
+    // Check email / mobile conflict if changed
+    if (input.email || input.mobile) {
+      const email = input.email || user.email;
+      const mobile = input.mobile || user.mobile;
+      const [existing] = await connection.query<(RowDataPacket & { id: string })[]>(
+        'SELECT id FROM users WHERE (email = ? OR mobile = ?) AND id != ? AND deleted_at IS NULL LIMIT 1',
+        [email, mobile, user.id]
+      );
+      if (existing.length > 0) {
+        throw new ApiError(409, 'USER_EXISTS', 'Another user with this email or mobile already exists');
+      }
+    }
+
+    if (input.fullName || input.email || input.mobile) {
+      await connection.execute(
+        `UPDATE users SET
+          full_name = COALESCE(?, full_name),
+          email = COALESCE(?, email),
+          mobile = COALESCE(?, mobile),
+          version = version + 1
+         WHERE id = ?`,
+        [input.fullName ?? null, input.email ?? null, input.mobile ?? null, user.id]
+      );
+    }
+
+    if (input.displayName || input.legalName || input.email || input.mobile) {
+      await connection.execute(
+        `UPDATE parties SET
+          display_name = COALESCE(?, display_name),
+          legal_name = COALESCE(?, legal_name),
+          email = COALESCE(?, email),
+          mobile = COALESCE(?, mobile),
+          version = version + 1
+         WHERE id = ?`,
+        [input.displayName ?? null, input.legalName ?? null, input.email ?? null, input.mobile ?? null, user.partyId]
+      );
+    }
+  });
+
+  if (input.status && input.status !== user.status) {
+    await updateUserStatus(user.id, input.status, 'Status updated via Edit User form', actorUserId);
+  }
+
+  return getUserById(user.id);
+}
+
+export async function blockUser(id: string, reason?: string, actorUserId?: string) {
+  return updateUserStatus(id, 'SUSPENDED', reason || 'Admin blocked account', actorUserId);
+}
+
+export async function unblockUser(id: string, actorUserId?: string) {
+  return updateUserStatus(id, 'ACTIVE', 'Admin unblocked account', actorUserId);
+}
+
+export async function resetPassword(
+  id: string,
+  mode: 'LINK' | 'TEMP_PASSWORD' = 'LINK',
+  actorUserId?: string
+) {
+  const user = await getUserById(id);
+  const last4 = user.mobile && user.mobile.length >= 4 ? user.mobile.slice(-4) : '1234';
+
+  const isEmployee = user.role === 'EMPLOYEE' || user.role === 'STAFF';
+  const prefix = isEmployee ? 'QinStarEmp@' : 'QinStar@';
+  const tempPassword = `${prefix}${last4}`;
+
+  const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+  await pool.execute(
+    `UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP(6), version = version + 1 WHERE id = ?`,
+    [passwordHash, user.id]
+  );
+
+  return {
+    message: mode === 'TEMP_PASSWORD'
+      ? `Temporary password generated successfully for ${user.fullName}.`
+      : `Password reset dispatched via email (${user.email}) and SMS.`,
+    tempPassword: mode === 'TEMP_PASSWORD' ? tempPassword : undefined,
+  };
+}
+
+export async function swapUserRole(
+  id: string,
+  input: z.infer<typeof swapUserRoleSchema>,
+  actorUserId: string
+) {
+  const user = await getUserById(id);
+
+  await withTransaction(async (connection) => {
+    const [roleRows] = await connection.query<(RowDataPacket & { id: number })[]>(
+      'SELECT id FROM roles WHERE code = ? LIMIT 1',
+      [input.role]
+    );
+    const roleId = roleRows[0]?.id;
+    if (!roleId) throw new ApiError(422, 'INVALID_ROLE', 'Target role is invalid');
+
+    await connection.execute(`DELETE FROM user_roles WHERE user_id = ?`, [user.id]);
+    await connection.execute(
+      `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)`,
+      [user.id, roleId, actorUserId]
+    );
+
+    if (input.parentPartyId) {
+      await connection.execute(
+        `UPDATE parties SET party_type = ?, parent_party_id = ?, version = version + 1 WHERE id = ?`,
+        [input.role, input.parentPartyId, user.partyId]
+      );
+    } else {
+      await connection.execute(
+        `UPDATE parties SET party_type = ?, version = version + 1 WHERE id = ?`,
+        [input.role, user.partyId]
+      );
+    }
+  });
+
+  return getUserById(user.id);
+}
+

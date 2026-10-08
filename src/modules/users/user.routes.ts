@@ -6,10 +6,14 @@ import { sendSuccess } from '../../shared/response.js';
 import {
   createUserSchema,
   listUsersSchema,
+  updateUserSchema,
+  swapUserRoleSchema,
   updateUserStatusSchema,
   userIdSchema,
   walletCreditDebitSchema,
   walletHoldSchema,
+  blockUserSchema,
+  resetPasswordSchema,
 } from './user.schemas.js';
 import {
   createUser,
@@ -18,7 +22,12 @@ import {
   getUserById,
   holdWalletFunds,
   listUsers,
+  updateUser,
+  swapUserRole,
   updateUserStatus,
+  blockUser,
+  unblockUser,
+  resetPassword,
 } from './user.service.js';
 
 export const userRouter = Router();
@@ -59,6 +68,32 @@ userRouter.post(
   })
 );
 
+// PUT /api/v1/users/:id - Update user details
+userRouter.put(
+  '/:id',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  validate(updateUserSchema),
+  asyncHandler(async (request, response) => {
+    const body = updateUserSchema.parse(request.body);
+    const updated = await updateUser(request.params.id as string, body, request.auth!.userId);
+    return sendSuccess(response, updated);
+  })
+);
+
+// PATCH /api/v1/users/:id/role - Swap user role / parent
+userRouter.patch(
+  '/:id/role',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  validate(swapUserRoleSchema),
+  asyncHandler(async (request, response) => {
+    const body = swapUserRoleSchema.parse(request.body);
+    const updated = await swapUserRole(request.params.id as string, body, request.auth!.userId);
+    return sendSuccess(response, updated);
+  })
+);
+
 // PATCH /api/v1/users/:id/status - Activate / Suspend / Update status
 userRouter.patch(
   '/:id/status',
@@ -69,6 +104,43 @@ userRouter.patch(
     const { status, reason } = updateUserStatusSchema.parse(request.body);
     const updated = await updateUserStatus(request.params.id as string, status, reason, request.auth!.userId);
     return sendSuccess(response, updated);
+  })
+);
+
+// POST /api/v1/users/:id/block - Block user account
+userRouter.post(
+  '/:id/block',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  validate(blockUserSchema),
+  asyncHandler(async (request, response) => {
+    const { reason } = blockUserSchema.parse(request.body);
+    const updated = await blockUser(request.params.id as string, reason, request.auth!.userId);
+    return sendSuccess(response, updated);
+  })
+);
+
+// POST /api/v1/users/:id/unblock - Unblock user account
+userRouter.post(
+  '/:id/unblock',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  asyncHandler(async (request, response) => {
+    const updated = await unblockUser(request.params.id as string, request.auth!.userId);
+    return sendSuccess(response, updated);
+  })
+);
+
+// POST /api/v1/users/:id/reset-password - Reset password
+userRouter.post(
+  '/:id/reset-password',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  validate(resetPasswordSchema),
+  asyncHandler(async (request, response) => {
+    const { mode } = resetPasswordSchema.parse(request.body);
+    const result = await resetPassword(request.params.id as string, mode, request.auth!.userId);
+    return sendSuccess(response, result);
   })
 );
 
@@ -110,3 +182,4 @@ userRouter.post(
     return sendSuccess(response, result);
   })
 );
+
