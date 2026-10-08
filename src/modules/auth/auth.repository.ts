@@ -11,13 +11,14 @@ interface UserRow extends RowDataPacket {
   status: string;
   failed_login_count: number;
   locked_until: Date | null;
+  must_change_password: number | boolean;
   roles: string | null;
   permissions: string | null;
 }
 
 export async function findUserForAuthentication(identifier: string): Promise<UserAuthRecord | null> {
   const [rows] = await pool.query<UserRow[]>(`
-    SELECT u.id, u.party_id, u.email, u.full_name, u.password_hash, u.status,
+    SELECT u.id, u.party_id, u.email, u.full_name, u.password_hash, u.status, u.must_change_password,
            u.failed_login_count, u.locked_until,
            GROUP_CONCAT(DISTINCT r.code ORDER BY r.code) AS roles,
            GROUP_CONCAT(DISTINCT p.code ORDER BY p.code) AS permissions
@@ -43,6 +44,7 @@ export async function findUserForAuthentication(identifier: string): Promise<Use
     lockedUntil: row.locked_until,
     roles: row.roles ? row.roles.split(',') : [],
     permissions: row.permissions ? row.permissions.split(',') : [],
+    mustChangePassword: Boolean(row.must_change_password),
   };
 }
 
@@ -90,4 +92,11 @@ export async function rotateRefreshToken(
 
 export async function revokeRefreshToken(tokenHash: string): Promise<void> {
   await pool.execute('UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)) WHERE token_hash = ?', [tokenHash]);
+}
+
+export async function revokeAllRefreshTokens(connection: PoolConnection, userId: string): Promise<void> {
+  await connection.execute(
+    'UPDATE refresh_tokens SET revoked_at = COALESCE(revoked_at, UTC_TIMESTAMP(6)) WHERE user_id = ?',
+    [userId],
+  );
 }

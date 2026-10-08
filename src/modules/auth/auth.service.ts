@@ -10,6 +10,7 @@ import {
   recordFailedLogin,
   recordSuccessfulLogin,
   revokeRefreshToken,
+  revokeAllRefreshTokens,
   rotateRefreshToken,
 } from './auth.repository.js';
 import type { AuthenticatedUser } from './auth.types.js';
@@ -33,7 +34,7 @@ type RequestContext = { ipAddress?: string | undefined; userAgent?: string | und
 
 function signAccessToken(user: AuthenticatedUser): string {
   return jwt.sign(
-    { partyId: user.partyId, email: user.email, roles: user.roles, permissions: user.permissions },
+    { partyId: user.partyId, email: user.email, roles: user.roles, permissions: user.permissions, mustChangePassword: user.mustChangePassword },
     env.JWT_ACCESS_SECRET,
     { subject: user.userId, issuer, audience, expiresIn: env.JWT_ACCESS_TTL as NonNullable<SignOptions['expiresIn']> },
   );
@@ -78,6 +79,7 @@ export async function login(identifier: string, password: string, context: Reque
     email: user.email,
     roles: user.roles,
     permissions: user.permissions,
+    mustChangePassword: user.mustChangePassword,
   };
   const pair = await buildTokenPair(authUser, context);
   await withTransaction((connection) => insertRefreshToken(connection, pair.refreshRecord));
@@ -94,6 +96,7 @@ export function verifyAccessToken(token: string): AuthenticatedUser {
       email: String(decoded.email),
       roles: Array.isArray(decoded.roles) ? decoded.roles.map(String) : [],
       permissions: Array.isArray(decoded.permissions) ? decoded.permissions.map(String) : [],
+      mustChangePassword: decoded.mustChangePassword === true,
     };
   } catch {
     throw new ApiError(401, 'INVALID_ACCESS_TOKEN', 'Access token is invalid or expired');
@@ -110,7 +113,7 @@ export async function refresh(refreshToken: string, context: RequestContext) {
   if (!decoded.sub || decoded.type !== 'refresh') throw new ApiError(401, 'INVALID_REFRESH_TOKEN', 'Invalid refresh token');
   const user = await findUserForAuthentication(decoded.sub);
   if (!user || user.status !== 'ACTIVE') throw new ApiError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is no longer valid');
-  const authUser = { userId: user.userId, partyId: user.partyId, email: user.email, roles: user.roles, permissions: user.permissions };
+  const authUser = { userId: user.userId, partyId: user.partyId, email: user.email, roles: user.roles, permissions: user.permissions, mustChangePassword: user.mustChangePassword };
   const pair = await buildTokenPair(authUser, context);
   const rotated = await withTransaction((connection) => rotateRefreshToken(connection, hashToken(refreshToken), pair.refreshRecord));
   if (!rotated) throw new ApiError(401, 'REFRESH_TOKEN_REUSED', 'Refresh token has already been used or revoked');
@@ -119,4 +122,33 @@ export async function refresh(refreshToken: string, context: RequestContext) {
 
 export async function logout(refreshToken: string): Promise<void> {
   await revokeRefreshToken(hashToken(refreshToken));
+}
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string, context: RequestContext) {
+  const user = await findUserForAuthentication(userId);
+  if (!user || user.status !== 'ACTIVE') throw new ApiError(404, 'USER_NOT_FOUND', 'Active user account not found');
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    throw new ApiError(401, 'CURRENT_PASSWORD_INVALID', 'Current password is incorrect');
+  }
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    throw new ApiError(422, 'PASSWORD_UNCHANGED', 'New password must be different from the current password');
+  }
+  const passwordHash = await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS);
+  const authUser: AuthenticatedUser = { ...user, mustChangePassword: false };
+  const pair = await buildTokenPair(authUser, context);
+  await withTransaction(async (connection) => {
+    await connection.execute(
+      `UPDATE users SET password_hash = ?, password_changed_at = UTC_TIMESTAMP(6), must_change_password = FALSE,
+       failed_login_count = 0, locked_until = NULL, version = version + 1 WHERE id = ?`,
+      [passwordHash, userId],
+    );
+    await revokeAllRefreshTokens(connection, userId);
+    await insertRefreshToken(connection, pair.refreshRecord);
+    await connection.execute(
+      `INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome)
+       VALUES (?, 'PASSWORD_CHANGED', 'USER', ?, 'SUCCESS')`,
+      [userId, userId],
+    );
+  });
+  return { accessToken: pair.accessToken, refreshToken: pair.refreshToken, tokenType: 'Bearer', expiresIn: env.JWT_ACCESS_TTL };
 }

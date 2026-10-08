@@ -84,6 +84,11 @@ Use `npm run db:migrate` as the normal table-creation method. It executes migrat
 | PATCH | `/api/v1/roles/:id` | Update a configurable employee role |
 | GET | `/api/v1/employees` | Search and paginate employees |
 | POST | `/api/v1/employees` | Atomically create an employee account and profile |
+| GET | `/api/v1/employees/meta` | List active employee departments and roles |
+| GET | `/api/v1/employees/:id` | Get employee details |
+| PUT | `/api/v1/employees/:id` | Update employee profile and role |
+| PATCH | `/api/v1/employees/:id/status` | Activate, suspend, deactivate, or terminate employee |
+| POST | `/api/v1/employees/:id/reset-password` | Reset employee password |
 
 See `/api-docs` or `/api-docs.json` for the authoritative request and response contract.
 

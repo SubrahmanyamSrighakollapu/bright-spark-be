@@ -12,6 +12,7 @@ import type {
   walletCreditDebitSchema,
   walletHoldSchema,
 } from './user.schemas.js';
+import type { AuthenticatedUser } from '../auth/auth.types.js';
 
 interface UserRow extends RowDataPacket {
   user_id: string;
@@ -32,12 +33,17 @@ interface UserRow extends RowDataPacket {
   parent_party_id: string | null;
   parent_name: string | null;
   parent_code: string | null;
+  grandparent_party_id: string | null;
   role_code: string | null;
   role_name: string | null;
   wallet_id: string | null;
   available_balance: number | string | null;
   hold_balance: number | string | null;
   ledger_balance: number | string | null;
+  created_by_user_id: string | null;
+  creator_name: string | null;
+  creator_role: string | null;
+  plan_id: string | null;
 }
 
 interface WalletRow extends RowDataPacket {
@@ -67,6 +73,7 @@ function mapUser(row: UserRow) {
     parentId: row.parent_party_id,
     parentName: row.parent_name,
     parentCode: row.parent_code,
+    masterDistributorId: row.party_type === 'DISTRIBUTOR' ? row.parent_party_id : row.grandparent_party_id,
     status: row.user_status,
     accountStatus: row.party_account_status,
     approvalStatus: row.party_approval_status,
@@ -79,6 +86,12 @@ function mapUser(row: UserRow) {
     ledgerBalance: Number(row.ledger_balance ?? 0),
     version: row.user_version,
     createdAt: row.user_created_at,
+    createdByUserId: row.created_by_user_id,
+    createdByRole: row.creator_role,
+    createdBy: row.creator_role === 'ADMIN' || row.creator_role === 'SUPER_ADMIN'
+      ? 'Admin'
+      : row.creator_name || 'Admin',
+    planId: row.plan_id,
   };
 }
 
@@ -100,8 +113,13 @@ SELECT
   p.account_status AS party_account_status,
   p.kyc_status AS party_kyc_status,
   p.parent_party_id,
+  p.created_by_user_id,
   parent.display_name AS parent_name,
   parent.code AS parent_code,
+  parent.parent_party_id AS grandparent_party_id,
+  creator.full_name AS creator_name,
+  creator_role.code AS creator_role,
+  JSON_UNQUOTE(JSON_EXTRACT(plan_mapping.configuration, '$.planId')) AS plan_id,
   r.code AS role_code,
   r.name AS role_name,
   w.id AS wallet_id,
@@ -111,14 +129,35 @@ SELECT
 FROM users u
 INNER JOIN parties p ON p.id = u.party_id
 LEFT JOIN parties parent ON parent.id = p.parent_party_id
+LEFT JOIN users creator ON creator.id = p.created_by_user_id
+LEFT JOIN user_roles creator_ur ON creator_ur.user_id = creator.id
+LEFT JOIN roles creator_role ON creator_role.id = creator_ur.role_id
+LEFT JOIN master_data plan_mapping ON plan_mapping.category = 'USER_PLAN_MAPPING' AND plan_mapping.code = u.id AND plan_mapping.is_active = TRUE
 LEFT JOIN user_roles ur ON ur.user_id = u.id
 LEFT JOIN roles r ON r.id = ur.role_id
 LEFT JOIN wallets w ON w.party_id = p.id
 `;
 
-export async function listUsers(filters: z.infer<typeof listUsersSchema>) {
+function isAdmin(actor: AuthenticatedUser): boolean {
+  return actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+}
+
+export async function listUsers(filters: z.infer<typeof listUsersSchema>, actor: AuthenticatedUser) {
   const conditions: string[] = ['u.deleted_at IS NULL', 'p.deleted_at IS NULL'];
   const values: unknown[] = [];
+
+  if (!isAdmin(actor)) {
+    if (!actor.partyId) throw new ApiError(403, 'NETWORK_SCOPE_REQUIRED', 'Your account is not linked to a network party');
+    if (actor.roles.includes('MASTER_DISTRIBUTOR')) {
+      conditions.push('(p.parent_party_id = ? OR parent.parent_party_id = ?)');
+      values.push(actor.partyId, actor.partyId);
+    } else if (actor.roles.includes('DISTRIBUTOR')) {
+      conditions.push("p.parent_party_id = ? AND p.party_type = 'RETAILER'");
+      values.push(actor.partyId);
+    } else {
+      throw new ApiError(403, 'NETWORK_SCOPE_FORBIDDEN', 'This role cannot access network user management');
+    }
+  }
 
   const roleFilter = filters.role || filters.type;
   if (roleFilter && roleFilter !== 'ALL') {
@@ -197,13 +236,32 @@ export async function getUserById(id: string) {
   return mapUser(rows[0]);
 }
 
+export async function assertUserInActorScope(id: string, actor: AuthenticatedUser): Promise<void> {
+  if (isAdmin(actor)) return;
+  if (!actor.partyId) throw new ApiError(403, 'NETWORK_SCOPE_REQUIRED', 'Your account is not linked to a network party');
+  const [rows] = await pool.query<(RowDataPacket & { party_type: string; parent_party_id: string | null; grandparent_id: string | null })[]>(
+    `SELECT p.party_type, p.parent_party_id, parent.parent_party_id AS grandparent_id
+     FROM users u JOIN parties p ON p.id = u.party_id
+     LEFT JOIN parties parent ON parent.id = p.parent_party_id
+     WHERE (u.id = ? OR p.id = ? OR p.code = ?) AND u.deleted_at IS NULL AND p.deleted_at IS NULL LIMIT 1`,
+    [id, id, id],
+  );
+  const target = rows[0];
+  const allowed = actor.roles.includes('MASTER_DISTRIBUTOR')
+    ? target && (target.parent_party_id === actor.partyId || target.grandparent_id === actor.partyId)
+    : actor.roles.includes('DISTRIBUTOR')
+      ? target?.party_type === 'RETAILER' && target.parent_party_id === actor.partyId
+      : false;
+  if (!allowed) throw new ApiError(404, 'USER_NOT_FOUND', 'User was not found within your network');
+}
+
 function generatePartyCode(role: string): string {
   const prefix = role === 'MASTER_DISTRIBUTOR' ? 'MD' : role === 'DISTRIBUTOR' ? 'DST' : 'RET';
   const randomNum = Math.floor(100 + Math.random() * 900);
   return `${prefix}${randomNum}`;
 }
 
-export async function createUser(input: z.infer<typeof createUserSchema>, actorUserId: string) {
+export async function createUser(input: z.infer<typeof createUserSchema>, actor: AuthenticatedUser) {
   const userId = randomUUID();
   const partyId = randomUUID();
   const walletId = randomUUID();
@@ -211,6 +269,18 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
 
   await withTransaction(async (connection) => {
     let finalParentPartyId = input.parentPartyId;
+    const createdByAdmin = isAdmin(actor);
+
+    if (!isAdmin(actor)) {
+      if (!actor.partyId) throw new ApiError(403, 'NETWORK_SCOPE_REQUIRED', 'Your account is not linked to a network party');
+      if (actor.roles.includes('MASTER_DISTRIBUTOR')) {
+        if (input.role === 'MASTER_DISTRIBUTOR') throw new ApiError(403, 'ROLE_CREATION_FORBIDDEN', 'Master Distributors can create only Distributors and Retailers');
+        if (input.role === 'DISTRIBUTOR') finalParentPartyId = actor.partyId;
+      } else if (actor.roles.includes('DISTRIBUTOR')) {
+        if (input.role !== 'RETAILER') throw new ApiError(403, 'ROLE_CREATION_FORBIDDEN', 'Distributors can create only Retailers');
+        finalParentPartyId = actor.partyId;
+      } else throw new ApiError(403, 'ROLE_CREATION_FORBIDDEN', 'This role cannot create network users');
+    }
 
     // Parent hierarchy validation
     if (finalParentPartyId) {
@@ -225,11 +295,17 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
       if (parent.account_status !== 'ACTIVE') {
         throw new ApiError(422, 'PARENT_NOT_ACTIVE', 'Parent party must be active');
       }
+      const expectedParentTypes = input.role === 'MASTER_DISTRIBUTOR' ? ['PLATFORM'] : input.role === 'DISTRIBUTOR' ? ['MASTER_DISTRIBUTOR'] : ['MASTER_DISTRIBUTOR', 'DISTRIBUTOR'];
+      if (!expectedParentTypes.includes(parent.party_type)) throw new ApiError(422, 'INVALID_PARENT_TYPE', `Invalid parent for ${input.role}`);
+      if (!isAdmin(actor) && actor.roles.includes('MASTER_DISTRIBUTOR') && input.role === 'RETAILER' && parent.id !== actor.partyId) {
+        const [ownedParents] = await connection.query<RowDataPacket[]>('SELECT id FROM parties WHERE id = ? AND parent_party_id = ? AND party_type = ? LIMIT 1', [parent.id, actor.partyId, 'DISTRIBUTOR']);
+        if (!ownedParents[0]) throw new ApiError(403, 'PARENT_OUTSIDE_SCOPE', 'Retailer parent must belong to your network');
+      }
     } else {
       // Default to logged-in admin's party ID or top platform party
       const [actorParties] = await connection.query<(RowDataPacket & { party_id: string })[]>(
         'SELECT party_id FROM users WHERE id = ? LIMIT 1',
-        [actorUserId]
+        [actor.userId]
       );
       if (actorParties[0]?.party_id) {
         finalParentPartyId = actorParties[0].party_id;
@@ -259,8 +335,8 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
 
     // Create party
     await connection.execute(
-      `INSERT INTO parties (id, party_type, code, display_name, legal_name, email, mobile, parent_party_id, approval_status, account_status, kyc_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'ACTIVE', 'NOT_STARTED')`,
+      `INSERT INTO parties (id, party_type, code, display_name, legal_name, email, mobile, parent_party_id, created_by_user_id, approval_status, account_status, kyc_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'NOT_STARTED')`,
       [
         partyId,
         input.role,
@@ -270,6 +346,9 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
         input.email,
         input.mobile,
         finalParentPartyId ?? null,
+        actor.userId,
+        createdByAdmin ? 'APPROVED' : 'PENDING_APPROVAL',
+        createdByAdmin ? 'ACTIVE' : 'PENDING',
       ]
     );
 
@@ -280,16 +359,16 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actorU
 
     // Create user
     await connection.execute(
-      `INSERT INTO users (id, party_id, email, mobile, full_name, password_hash, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE')`,
-      [userId, partyId, input.email, input.mobile, input.fullName, passwordHash]
+      `INSERT INTO users (id, party_id, email, mobile, full_name, password_hash, status, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
+      [userId, partyId, input.email, input.mobile, input.fullName, passwordHash, createdByAdmin ? 'ACTIVE' : 'PENDING']
     );
 
     // Create user role mapping if role found
     if (roleId) {
       await connection.execute(
         `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)`,
-        [userId, roleId, actorUserId]
+        [userId, roleId, actor.userId]
       );
     }
 

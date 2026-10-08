@@ -28,6 +28,7 @@ import {
   blockUser,
   unblockUser,
   resetPassword,
+  assertUserInActorScope,
 } from './user.service.js';
 
 export const userRouter = Router();
@@ -40,10 +41,15 @@ userRouter.get(
   validate(listUsersSchema, 'query'),
   asyncHandler(async (request, response) => {
     const query = listUsersSchema.parse(request.query);
-    const result = await listUsers(query);
+    const result = await listUsers(query, request.auth!);
     return sendSuccess(response, result);
   })
 );
+
+userRouter.use('/:id', asyncHandler(async (request, _response, next) => {
+  await assertUserInActorScope(request.params.id as string, request.auth!);
+  next();
+}));
 
 // GET /api/v1/users/:id - Single user details
 userRouter.get(
@@ -63,7 +69,7 @@ userRouter.post(
   validate(createUserSchema),
   asyncHandler(async (request, response) => {
     const body = createUserSchema.parse(request.body);
-    const user = await createUser(body, request.auth!.userId);
+    const user = await createUser(body, request.auth!);
     return sendSuccess(response, user, 201);
   })
 );

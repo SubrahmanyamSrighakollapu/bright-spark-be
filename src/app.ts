@@ -36,16 +36,25 @@ export function createApp() {
       swaggerOptions: { persistAuthorization: true, displayRequestDuration: true },
     }));
   }
-  const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map((origin) => origin.trim());
+  const normalizeOrigin = (origin: string): string => {
+    try { return new URL(origin.trim()).origin; } catch { return origin.trim().replace(/\/$/, ''); }
+  };
+  const allowedOrigins = env.FRONTEND_ORIGIN.split(',').map(normalizeOrigin).filter(Boolean);
 
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        let isDevelopmentOrigin = false;
+        try {
+          const url = origin ? new URL(origin) : null;
+          const hostname = url?.hostname ?? '';
+          const isPrivateNetwork = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
+          isDevelopmentOrigin = env.NODE_ENV !== 'production' && url?.protocol === 'http:' &&
+            (hostname === 'localhost' || hostname === '127.0.0.1' || isPrivateNetwork);
+        } catch { /* invalid origins are rejected below */ }
+        if (!origin || allowedOrigins.includes(normalizeOrigin(origin)) || isDevelopmentOrigin) {
           callback(null, true);
-        } else {
-          callback(null, true);
-        }
+        } else callback(new Error('Origin is not allowed by CORS'));
       },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -59,6 +68,7 @@ export function createApp() {
         'X-Request-ID',
       ],
       optionsSuccessStatus: 200,
+      maxAge: 600,
     })
   );
 

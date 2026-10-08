@@ -10,6 +10,11 @@ export function authenticate(request: Request, _response: Response, next: NextFu
   }
   try {
     request.auth = verifyAccessToken(authorization.slice(7));
+    const allowedDuringPasswordChange = ['/auth/me', '/auth/logout', '/auth/change-password'];
+    if (request.auth.mustChangePassword && !allowedDuringPasswordChange.some((path) => request.originalUrl.startsWith(path))) {
+      next(new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your temporary password before continuing'));
+      return;
+    }
     next();
   } catch (error) {
     next(error);

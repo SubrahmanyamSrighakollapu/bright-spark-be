@@ -24,15 +24,21 @@ Baseline generated from the active Express registrations and the centralized Ope
 | PATCH | `/api/v1/roles/{id}` | Roles | Bearer JWT | `ROLE_UPDATE` | Documented |
 | GET | `/api/v1/employees` | Employees | Bearer JWT | `EMPLOYEE_READ` | Documented |
 | POST | `/api/v1/employees` | Employees | Bearer JWT | `EMPLOYEE_CREATE` | Documented |
+| GET | `/api/v1/employees/meta` | Employees | Bearer JWT | `EMPLOYEE_READ` | Documented |
+| GET | `/api/v1/employees/{id}` | Employees | Bearer JWT | `EMPLOYEE_READ` | Documented |
+| PUT | `/api/v1/employees/{id}` | Employees | Bearer JWT | `EMPLOYEE_UPDATE` | Documented |
+| PATCH | `/api/v1/employees/{id}/status` | Employees | Bearer JWT | `EMPLOYEE_UPDATE` | Documented |
+| POST | `/api/v1/employees/{id}/reset-password` | Employees | Bearer JWT | `EMPLOYEE_UPDATE` | Documented |
+| POST | `/api/v1/auth/change-password` | Authentication | Bearer JWT | Authenticated user | Documented |
 
 ## Baseline totals
 
-- Active API operations: 20
-- Documented API operations: 20
+- Active API operations in this inventory baseline: 25
+- Documented API operations in this inventory baseline: 25
 - Partially documented operations: 0
 - Undocumented operations: 0
 - Stale documented operations: 0
-- Unique OpenAPI paths: 16
+- Unique OpenAPI paths: 20
 
 ## Modules not implemented yet
 

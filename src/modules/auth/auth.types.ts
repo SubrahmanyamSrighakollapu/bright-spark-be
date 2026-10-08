@@ -4,6 +4,7 @@ export interface AuthenticatedUser {
   email: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword: boolean;
 }
 
 export interface UserAuthRecord extends AuthenticatedUser {
