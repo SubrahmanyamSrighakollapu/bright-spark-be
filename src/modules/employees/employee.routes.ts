@@ -72,8 +72,10 @@ employeeRouter.get('/', requirePermission('EMPLOYEE_READ'), validate(listEmploye
 employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEmployeeSchema), asyncHandler(async (request, response) => {
   const input = createEmployeeSchema.parse(request.body);
   const employeeId = randomUUID(); const userId = randomUUID();
-  const rawPassword = input.mobile.slice(-4);
+  const rawPassword = `QinStarEmp@${input.mobile.slice(-4)}`;
   const passwordHash = await bcrypt.hash(rawPassword, env.BCRYPT_ROUNDS);
+  let employeeCode = '';
+  let roleId = 0;
   await withTransaction(async (connection) => {
     // Check duplicate email or mobile
     const [existingUsers] = await connection.query<RowDataPacket[]>(
@@ -83,33 +85,32 @@ employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEm
     if (existingUsers[0]) {
       throw new ApiError(409, 'USER_EXISTS', 'An account with this email address or mobile number already exists');
     }
-    // Check duplicate employee code
-    const [existingEmpCode] = await connection.query<RowDataPacket[]>(
-      'SELECT id FROM employee_profiles WHERE employee_code = ? LIMIT 1',
-      [input.employeeCode]
-    );
-    if (existingEmpCode[0]) {
-      throw new ApiError(409, 'EMPLOYEE_CODE_EXISTS', 'An employee profile with this Employee Code already exists');
-    }
-
-    const [roles] = await connection.query<(RowDataPacket & { id: number })[]>(
-      "SELECT id FROM roles WHERE id = ? AND role_category = 'EMPLOYEE' AND is_active = TRUE FOR UPDATE", [input.roleId],
-    );
-    if (!roles[0]) throw new ApiError(422, 'INVALID_EMPLOYEE_ROLE', 'The selected role is not an active employee role');
     const [departments] = await connection.query<RowDataPacket[]>(
       "SELECT id FROM master_data WHERE category = 'EMPLOYEE_DEPARTMENT' AND code = ? AND is_active = TRUE", [input.departmentCode],
     );
     if (!departments[0]) throw new ApiError(422, 'INVALID_DEPARTMENT', 'The selected employee department is invalid or inactive');
+    const [roles] = await connection.query<(RowDataPacket & { id: number })[]>(
+      "SELECT id FROM roles WHERE code = ? AND role_category = 'EMPLOYEE' AND is_active = TRUE LIMIT 1 FOR UPDATE", [input.departmentCode],
+    );
+    if (!roles[0]) throw new ApiError(422, 'DEPARTMENT_ROLE_NOT_CONFIGURED', 'The selected department does not have an active employee role');
+    roleId = roles[0].id;
+    const prefixes: Record<string, string> = { OPERATIONS: 'OPS', ACCOUNTS: 'ACC', KYC: 'KYC', SALES: 'SAL' };
+    const prefix = `EMP_${prefixes[input.departmentCode] ?? input.departmentCode.slice(0, 3)}_`;
+    const [lastCodes] = await connection.query<(RowDataPacket & { employee_code: string })[]>(
+      'SELECT employee_code FROM employee_profiles WHERE employee_code LIKE ? ORDER BY employee_code DESC LIMIT 1 FOR UPDATE', [`${prefix}%`],
+    );
+    const lastNumber = Number.parseInt(lastCodes[0]?.employee_code.slice(prefix.length) ?? '0', 10) || 0;
+    employeeCode = `${prefix}${String(lastNumber + 1).padStart(3, '0')}`;
     const [platforms] = await connection.query<(RowDataPacket & { id: string })[]>("SELECT id FROM parties WHERE party_type = 'PLATFORM' LIMIT 1");
     if (!platforms[0]) throw new ApiError(409, 'PLATFORM_NOT_CONFIGURED', 'The platform party must be seeded before creating employees');
     await connection.execute(`INSERT INTO users (id, party_id, email, mobile, full_name, password_hash, status, must_change_password)
       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', TRUE)`, [userId, platforms[0].id, input.email.toLowerCase(), input.mobile, input.fullName, passwordHash]);
-    await connection.execute('INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)', [userId, input.roleId, request.auth!.userId]);
+    await connection.execute('INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)', [userId, roleId, request.auth!.userId]);
     await connection.execute(`INSERT INTO employee_profiles
       (id, user_id, employee_code, department_code, designation, manager_user_id, joining_date, shift_code, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [employeeId, userId, input.employeeCode, input.departmentCode, input.designation ?? null, input.managerUserId ?? null, input.joiningDate ?? null, input.shiftCode, request.auth!.userId]);
+      VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)`, [employeeId, userId, employeeCode, input.departmentCode, input.managerUserId ?? null, input.joiningDate, input.shiftCode, request.auth!.userId]);
     await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, after_data)
-      VALUES (?, 'EMPLOYEE_CREATED', 'EMPLOYEE', ?, 'SUCCESS', ?)`, [request.auth!.userId, employeeId, JSON.stringify({ employeeCode: input.employeeCode, roleId: input.roleId, departmentCode: input.departmentCode })]);
+      VALUES (?, 'EMPLOYEE_CREATED', 'EMPLOYEE', ?, 'SUCCESS', ?)`, [request.auth!.userId, employeeId, JSON.stringify({ employeeCode, roleId, departmentCode: input.departmentCode })]);
   });
   const [rows] = await pool.query<EmployeeRow[]>(`${employeeSelect} WHERE ep.id = ?`, [employeeId]);
   return sendSuccess(response, mapEmployee(rows[0]!), 201);

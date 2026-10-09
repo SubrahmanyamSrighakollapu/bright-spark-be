@@ -21,6 +21,9 @@ interface PartyRow extends RowDataPacket {
   version: number;
   created_at: Date;
   updated_at: Date;
+  created_by_user_id: string | null;
+  creator_name: string | null;
+  creator_role: string | null;
 }
 
 function mapParty(row: PartyRow) {
@@ -40,10 +43,17 @@ function mapParty(row: PartyRow) {
     version: row.version,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    createdByUserId: row.created_by_user_id,
+    createdByName: row.creator_name,
+    createdByRole: row.creator_role,
   };
 }
 
-const selectParty = `SELECT p.*, parent.display_name AS parent_name FROM parties p LEFT JOIN parties parent ON parent.id = p.parent_party_id`;
+const selectParty = `SELECT p.*, parent.display_name AS parent_name, creator.full_name AS creator_name,
+  (SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = p.created_by_user_id ORDER BY ur.assigned_at LIMIT 1) AS creator_role
+  FROM parties p
+  LEFT JOIN parties parent ON parent.id = p.parent_party_id
+  LEFT JOIN users creator ON creator.id = p.created_by_user_id`;
 
 export async function listParties(filters: z.infer<typeof listPartiesSchema>) {
   const conditions = ['p.deleted_at IS NULL'];
@@ -112,6 +122,13 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
 
 export async function reviewParty(id: string, decision: string, reasonCode: string | undefined, remarks: string, version: number, actorUserId: string) {
   await withTransaction(async (connection) => {
+    const [parties] = await connection.query<(RowDataPacket & { kyc_status: string })[]>(
+      `SELECT kyc_status FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, [id],
+    );
+    if (!parties[0]) throw new ApiError(404, 'PARTY_NOT_FOUND', 'Party was not found');
+    if (decision === 'APPROVED' && parties[0].kyc_status !== 'APPROVED') {
+      throw new ApiError(409, 'KYC_APPROVAL_REQUIRED', 'Network approval is allowed only after KYC approval');
+    }
     const accountStatus = decision === 'APPROVED' ? 'ACTIVE' : 'INACTIVE';
     const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE parties SET approval_status = ?, account_status = ?, version = version + 1
@@ -119,6 +136,10 @@ export async function reviewParty(id: string, decision: string, reasonCode: stri
       [decision, accountStatus, id, version],
     );
     if (result.affectedRows !== 1) throw new ApiError(409, 'PARTY_NOT_REVIEWABLE', 'Party is stale or is not awaiting approval');
+    await connection.execute(
+      `UPDATE users SET status = ?, version = version + 1 WHERE party_id = ? AND deleted_at IS NULL`,
+      [decision === 'APPROVED' ? 'ACTIVE' : 'INACTIVE', id],
+    );
     await connection.execute(
       `INSERT INTO approval_events (id, subject_type, subject_id, action, actor_user_id, reason_code, remarks)
        VALUES (?, 'PARTY', ?, ?, ?, ?, ?)`,

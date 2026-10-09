@@ -10,15 +10,12 @@ export const listEmployeesSchema = z.object({
 });
 
 export const createEmployeeSchema = z.object({
-  employeeCode: z.string().trim().min(2).max(50).regex(/^[A-Z0-9_-]+$/),
   fullName: z.string().trim().min(2).max(160),
   email: z.string().trim().email().max(254),
   mobile: z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number'),
   departmentCode: z.string().trim().min(2).max(100).regex(/^[A-Z0-9_-]+$/),
-  roleId: z.number().int().positive(),
-  designation: z.string().trim().max(120).optional(),
   managerUserId: z.string().uuid().optional(),
-  joiningDate: z.string().date().optional(),
+  joiningDate: z.string().date(),
   shiftCode: z.enum(['MORNING', 'EVENING', 'NIGHT']).default('MORNING'),
 });
 

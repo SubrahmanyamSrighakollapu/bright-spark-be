@@ -336,6 +336,24 @@ async function seed(): Promise<void> {
         [randomUUID(), cat, code, label, desc, sort, adminId]
       );
     }
+
+    // 12. Lookup-driven KYC document requirements. Admins can change labels,
+    // applicability and validation rules through master data without code changes.
+    await connection.execute("UPDATE master_data SET is_active = FALSE WHERE category = 'KYC_DOCUMENT_TYPE'");
+    const kycDocumentTypes = [
+      ['ID_PROOF', 'ID Proof', 'Government-issued identity proof', 10, { required: true, applicablePartyTypes: ['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'], acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeMb: 5 }],
+      ['ADDRESS_PROOF', 'Address Proof', 'Current residential or business address proof', 20, { required: true, applicablePartyTypes: ['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'], acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeMb: 5 }],
+      ['BANK_PROOF', 'Bank Proof', 'Cancelled cheque, passbook or bank statement', 30, { required: true, applicablePartyTypes: ['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'], acceptedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'], maxSizeMb: 5 }],
+      ['PROFILE_PHOTO', 'Profile Photo', 'Recent clear passport-size profile photograph', 40, { required: true, applicablePartyTypes: ['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'], acceptedMimeTypes: ['image/jpeg', 'image/png'], maxSizeMb: 2 }],
+    ] as const;
+    for (const [code, label, description, sortOrder, configuration] of kycDocumentTypes) {
+      await connection.execute(
+        `INSERT INTO master_data (id, category, code, label, description, configuration, sort_order, is_active, created_by)
+         VALUES (?, 'KYC_DOCUMENT_TYPE', ?, ?, ?, ?, ?, TRUE, ?)
+         ON DUPLICATE KEY UPDATE label = VALUES(label), description = VALUES(description), configuration = VALUES(configuration), sort_order = VALUES(sort_order), is_active = TRUE`,
+        [randomUUID(), code, label, description, JSON.stringify(configuration), sortOrder, adminId]
+      );
+    }
   });
 }
 

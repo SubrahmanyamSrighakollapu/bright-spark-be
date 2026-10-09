@@ -274,7 +274,6 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actor:
 
   await withTransaction(async (connection) => {
     let finalParentPartyId = input.parentPartyId;
-    const createdByAdmin = isAdmin(actor);
 
     if (!isAdmin(actor)) {
       if (!actor.partyId) throw new ApiError(403, 'NETWORK_SCOPE_REQUIRED', 'Your account is not linked to a network party');
@@ -352,8 +351,8 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actor:
         input.mobile,
         finalParentPartyId ?? null,
         actor.userId,
-        createdByAdmin ? 'APPROVED' : 'PENDING_APPROVAL',
-        createdByAdmin ? 'ACTIVE' : 'PENDING',
+        'PENDING_APPROVAL',
+        'PENDING',
       ]
     );
 
@@ -366,7 +365,7 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actor:
     await connection.execute(
       `INSERT INTO users (id, party_id, email, mobile, full_name, password_hash, status, must_change_password)
        VALUES (?, ?, ?, ?, ?, ?, ?, TRUE)`,
-      [userId, partyId, input.email, input.mobile, input.fullName, passwordHash, createdByAdmin ? 'ACTIVE' : 'PENDING']
+      [userId, partyId, input.email, input.mobile, input.fullName, passwordHash, 'PENDING']
     );
 
     // Create user role mapping if role found
@@ -395,6 +394,9 @@ export async function updateUserStatus(
   actorUserId?: string
 ) {
   const user = await getUserById(id);
+  if (status === 'ACTIVE' && user.kycStatus !== 'APPROVED') {
+    throw new ApiError(409, 'KYC_APPROVAL_REQUIRED', 'The account cannot be activated before KYC approval');
+  }
   const mappedStatus = status === 'BLOCKED' ? 'SUSPENDED' : status;
 
   await withTransaction(async (connection) => {

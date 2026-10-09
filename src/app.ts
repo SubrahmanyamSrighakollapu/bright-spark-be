@@ -23,6 +23,7 @@ import { planRouter } from './modules/plans/plan.routes.js';
 import { headlineRouter } from './modules/headlines/headline.routes.js';
 import { settingRouter } from './modules/settings/setting.routes.js';
 import { walletRouter } from './modules/wallets/wallet.routes.js';
+import { kycRouter } from './modules/kyc/kyc.routes.js';
 
 export function createApp() {
   const app = express();
@@ -97,6 +98,7 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/headlines`, headlineRouter);
   app.use(`${env.API_PREFIX}/settings`, settingRouter);
   app.use(`${env.API_PREFIX}/wallet`, walletRouter);
+  app.use(`${env.API_PREFIX}/kyc`, kycRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;
