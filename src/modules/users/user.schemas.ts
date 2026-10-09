@@ -64,9 +64,13 @@ export const resetPasswordSchema = z.object({
   mode: z.enum(['LINK', 'TEMP_PASSWORD']).default('LINK'),
 });
 
-export const swapUserRoleSchema = z.object({
-  role: z.enum(['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER']),
-  parentPartyId: z.string().optional(),
-  reason: z.string().optional(),
+export const transferUserAuthoritySchema = z.object({
+  targetParentPartyId: z.string().uuid(),
+  reason: z.string().trim().min(3).max(500),
+});
+
+export const eligibleAuthoritiesSchema = z.object({
+  authorityType: z.enum(['PLATFORM', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR']).optional(),
+  search: z.string().trim().max(100).optional(),
 });
 

@@ -1,6 +1,8 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import jwt from 'jsonwebtoken';
+import { env } from '../src/config/env.js';
 
 describe('API shell', () => {
   const app = createApp();
@@ -47,6 +49,20 @@ describe('API shell', () => {
     expect(response.headers['access-control-allow-origin']).toBe('http://192.168.1.25:3000');
     expect(response.headers['access-control-allow-methods']).toContain('PATCH');
     expect(response.headers['access-control-allow-headers'].toLowerCase()).toContain('x-client-platform');
+  });
+
+  it('allows a temporary-password session to reach password change but blocks normal APIs', async () => {
+    const accessToken = jwt.sign({ partyId: null, email: 'temp@example.com', roles: ['RETAILER'],
+      permissions: ['USER_READ'], mustChangePassword: true }, env.JWT_ACCESS_SECRET,
+      { subject: '00000000-0000-4000-8000-000000000001', issuer: 'qin-star-pay-api', audience: 'qin-star-pay-web', expiresIn: '5m' });
+    const [changePassword, protectedApi] = await Promise.all([
+      request(app).post('/api/v1/auth/change-password').set('Authorization', `Bearer ${accessToken}`).send({}),
+      request(app).get('/api/v1/users').set('Authorization', `Bearer ${accessToken}`),
+    ]);
+    expect(changePassword.status).toBe(422);
+    expect(changePassword.body.error.code).toBe('VALIDATION_ERROR');
+    expect(protectedApi.status).toBe(403);
+    expect(protectedApi.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
   });
 
   it('protects role and employee management routes', async () => {

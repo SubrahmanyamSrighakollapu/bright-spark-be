@@ -7,7 +7,8 @@ import {
   createUserSchema,
   listUsersSchema,
   updateUserSchema,
-  swapUserRoleSchema,
+  transferUserAuthoritySchema,
+  eligibleAuthoritiesSchema,
   updateUserStatusSchema,
   userIdSchema,
   walletCreditDebitSchema,
@@ -23,7 +24,8 @@ import {
   holdWalletFunds,
   listUsers,
   updateUser,
-  swapUserRole,
+  transferUserAuthority,
+  listEligibleAuthorities,
   updateUserStatus,
   blockUser,
   unblockUser,
@@ -87,15 +89,28 @@ userRouter.put(
   })
 );
 
-// PATCH /api/v1/users/:id/role - Swap user role / parent
-userRouter.patch(
-  '/:id/role',
+// GET /api/v1/users/:id/eligible-authorities - Admin-only transfer destinations
+userRouter.get(
+  '/:id/eligible-authorities',
   requirePermission('USER_WRITE'),
   validate(userIdSchema, 'params'),
-  validate(swapUserRoleSchema),
+  validate(eligibleAuthoritiesSchema, 'query'),
   asyncHandler(async (request, response) => {
-    const body = swapUserRoleSchema.parse(request.body);
-    const updated = await swapUserRole(request.params.id as string, body, request.auth!.userId);
+    const query = eligibleAuthoritiesSchema.parse(request.query);
+    const result = await listEligibleAuthorities(request.params.id as string, query.authorityType, query.search, request.auth!);
+    return sendSuccess(response, result);
+  })
+);
+
+// PATCH /api/v1/users/:id/authority - Admin-only hierarchy transfer (role is preserved)
+userRouter.patch(
+  '/:id/authority',
+  requirePermission('USER_WRITE'),
+  validate(userIdSchema, 'params'),
+  validate(transferUserAuthoritySchema),
+  asyncHandler(async (request, response) => {
+    const body = transferUserAuthoritySchema.parse(request.body);
+    const updated = await transferUserAuthority(request.params.id as string, body, request.auth!);
     return sendSuccess(response, updated);
   })
 );

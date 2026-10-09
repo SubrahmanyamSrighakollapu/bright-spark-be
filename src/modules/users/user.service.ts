@@ -8,7 +8,7 @@ import type {
   createUserSchema,
   listUsersSchema,
   updateUserSchema,
-  swapUserRoleSchema,
+  transferUserAuthoritySchema,
   walletCreditDebitSchema,
   walletHoldSchema,
 } from './user.schemas.js';
@@ -33,6 +33,7 @@ interface UserRow extends RowDataPacket {
   parent_party_id: string | null;
   parent_name: string | null;
   parent_code: string | null;
+  parent_party_type: string | null;
   grandparent_party_id: string | null;
   role_code: string | null;
   role_name: string | null;
@@ -73,7 +74,10 @@ function mapUser(row: UserRow) {
     parentId: row.parent_party_id,
     parentName: row.parent_name,
     parentCode: row.parent_code,
-    masterDistributorId: row.party_type === 'DISTRIBUTOR' ? row.parent_party_id : row.grandparent_party_id,
+    parentType: row.parent_party_type,
+    masterDistributorId: row.party_type === 'DISTRIBUTOR'
+      ? row.parent_party_id
+      : row.parent_party_type === 'MASTER_DISTRIBUTOR' ? row.parent_party_id : row.grandparent_party_id,
     status: row.user_status,
     accountStatus: row.party_account_status,
     approvalStatus: row.party_approval_status,
@@ -116,6 +120,7 @@ SELECT
   p.created_by_user_id,
   parent.display_name AS parent_name,
   parent.code AS parent_code,
+  parent.party_type AS parent_party_type,
   parent.parent_party_id AS grandparent_party_id,
   creator.full_name AS creator_name,
   creator_role.code AS creator_role,
@@ -763,38 +768,121 @@ export async function resetPassword(
   };
 }
 
-export async function swapUserRole(
+function assertAdminAuthority(actor: AuthenticatedUser) {
+  if (!isAdmin(actor)) {
+    throw new ApiError(403, 'ADMIN_AUTHORITY_REQUIRED', 'Only an administrator can transfer network user authority');
+  }
+}
+
+const allowedAuthorityTypes: Record<string, string[]> = {
+  MASTER_DISTRIBUTOR: ['PLATFORM'],
+  DISTRIBUTOR: ['PLATFORM', 'MASTER_DISTRIBUTOR'],
+  RETAILER: ['PLATFORM', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR'],
+};
+
+export async function listEligibleAuthorities(
   id: string,
-  input: z.infer<typeof swapUserRoleSchema>,
-  actorUserId: string
+  authorityType: string | undefined,
+  search: string | undefined,
+  actor: AuthenticatedUser,
 ) {
+  assertAdminAuthority(actor);
   const user = await getUserById(id);
+  const allowedTypes = allowedAuthorityTypes[user.role];
+  if (!allowedTypes) throw new ApiError(422, 'AUTHORITY_TRANSFER_NOT_ALLOWED', 'This user role cannot be transferred in the network hierarchy');
+  if (authorityType && !allowedTypes.includes(authorityType)) {
+    throw new ApiError(422, 'INVALID_AUTHORITY_TYPE', 'The selected authority type is not valid for this user role');
+  }
+
+  const types = authorityType ? [authorityType] : allowedTypes;
+  const placeholders = types.map(() => '?').join(', ');
+  const conditions = [
+    `p.party_type IN (${placeholders})`,
+    'p.id <> ?',
+    'p.deleted_at IS NULL',
+    "p.account_status = 'ACTIVE'",
+    "p.approval_status = 'APPROVED'",
+  ];
+  const values: unknown[] = [...types, user.partyId];
+  if (search) {
+    conditions.push('(p.display_name LIKE ? OR p.code LIKE ? OR p.email LIKE ? OR p.mobile LIKE ?)');
+    const pattern = `%${search}%`;
+    values.push(pattern, pattern, pattern, pattern);
+  }
+
+  const [rows] = await pool.query<(RowDataPacket & {
+    id: string; party_type: string; code: string; display_name: string;
+    email: string | null; mobile: string | null; parent_party_id: string | null;
+  })[]>(
+    `SELECT p.id, p.party_type, p.code, p.display_name, p.email, p.mobile, p.parent_party_id
+       FROM parties p
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY FIELD(p.party_type, 'PLATFORM', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR'), p.display_name`,
+    values,
+  );
+
+  return {
+    user: { id: user.id, partyId: user.partyId, role: user.role, parentId: user.parentId, name: user.fullName },
+    allowedAuthorityTypes: allowedTypes,
+    items: rows.map((row) => ({
+      partyId: row.id,
+      authorityType: row.party_type,
+      code: row.code,
+      name: row.display_name,
+      email: row.email,
+      mobile: row.mobile,
+      parentPartyId: row.parent_party_id,
+      isCurrent: row.id === user.parentId,
+    })),
+  };
+}
+
+export async function transferUserAuthority(
+  id: string,
+  input: z.infer<typeof transferUserAuthoritySchema>,
+  actor: AuthenticatedUser,
+) {
+  assertAdminAuthority(actor);
+  const user = await getUserById(id);
+  const allowedTypes = allowedAuthorityTypes[user.role];
+  if (!allowedTypes) throw new ApiError(422, 'AUTHORITY_TRANSFER_NOT_ALLOWED', 'This user role cannot be transferred in the network hierarchy');
+  if (input.targetParentPartyId === user.parentId) {
+    throw new ApiError(409, 'AUTHORITY_UNCHANGED', 'The selected authority is already assigned to this user');
+  }
 
   await withTransaction(async (connection) => {
-    const [roleRows] = await connection.query<(RowDataPacket & { id: number })[]>(
-      'SELECT id FROM roles WHERE code = ? LIMIT 1',
-      [input.role]
+    const [partyRows] = await connection.query<(RowDataPacket & { id: string; party_type: string; parent_party_id: string | null })[]>(
+      'SELECT id, party_type, parent_party_id FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE',
+      [user.partyId],
     );
-    const roleId = roleRows[0]?.id;
-    if (!roleId) throw new ApiError(422, 'INVALID_ROLE', 'Target role is invalid');
+    const currentParty = partyRows[0];
+    if (!currentParty) throw new ApiError(404, 'PARTY_NOT_FOUND', 'The user network party was not found');
 
-    await connection.execute(`DELETE FROM user_roles WHERE user_id = ?`, [user.id]);
-    await connection.execute(
-      `INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)`,
-      [user.id, roleId, actorUserId]
+    const [targetRows] = await connection.query<(RowDataPacket & { id: string; party_type: string; display_name: string })[]>(
+      `SELECT id, party_type, display_name FROM parties
+        WHERE id = ? AND deleted_at IS NULL AND account_status = 'ACTIVE' AND approval_status = 'APPROVED'
+        FOR UPDATE`,
+      [input.targetParentPartyId],
     );
-
-    if (input.parentPartyId) {
-      await connection.execute(
-        `UPDATE parties SET party_type = ?, parent_party_id = ?, version = version + 1 WHERE id = ?`,
-        [input.role, input.parentPartyId, user.partyId]
-      );
-    } else {
-      await connection.execute(
-        `UPDATE parties SET party_type = ?, version = version + 1 WHERE id = ?`,
-        [input.role, user.partyId]
-      );
+    const target = targetRows[0];
+    if (!target) throw new ApiError(422, 'INVALID_TARGET_AUTHORITY', 'The selected authority is not active and approved');
+    if (!allowedTypes.includes(target.party_type)) {
+      throw new ApiError(422, 'INVALID_AUTHORITY_HIERARCHY', `${user.role} cannot be assigned under ${target.party_type}`);
     }
+
+    await connection.execute(
+      'UPDATE parties SET parent_party_id = ?, version = version + 1 WHERE id = ?',
+      [target.id, user.partyId],
+    );
+    await connection.execute(
+      `INSERT INTO audit_logs
+        (actor_user_id, actor_party_id, action, resource_type, resource_id, outcome, before_data, after_data, metadata)
+       VALUES (?, ?, 'USER_AUTHORITY_TRANSFERRED', 'USER', ?, 'SUCCESS', ?, ?, ?)`,
+      [actor.userId, actor.partyId, user.id,
+        JSON.stringify({ parentPartyId: currentParty.parent_party_id, role: user.role }),
+        JSON.stringify({ parentPartyId: target.id, authorityType: target.party_type, role: user.role }),
+        JSON.stringify({ reason: input.reason, rolePreserved: true, creatorPreserved: true })],
+    );
   });
 
   return getUserById(user.id);

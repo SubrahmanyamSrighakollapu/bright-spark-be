@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  request_id VARCHAR(100) NULL,
+  actor_user_id CHAR(36) NULL,
+  actor_party_id CHAR(36) NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(80) NOT NULL,
+  resource_id VARCHAR(100) NULL,
+  outcome ENUM('SUCCESS','FAILURE') NOT NULL,
+  ip_address VARCHAR(45) NULL,
+  user_agent VARCHAR(500) NULL,
+  before_data JSON NULL,
+  after_data JSON NULL,
+  metadata JSON NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  CONSTRAINT fk_audit_actor_user FOREIGN KEY (actor_user_id) REFERENCES users(id),
+  CONSTRAINT fk_audit_actor_party FOREIGN KEY (actor_party_id) REFERENCES parties(id),
+  INDEX idx_audit_resource (resource_type, resource_id, created_at),
+  INDEX idx_audit_actor (actor_user_id, created_at),
+  INDEX idx_audit_request (request_id)
+) ENGINE=InnoDB;
