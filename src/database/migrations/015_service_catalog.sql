@@ -1,0 +1,35 @@
+CREATE TABLE IF NOT EXISTS service_catalog_categories (
+  id CHAR(36) PRIMARY KEY,
+  code VARCHAR(50) NOT NULL UNIQUE,
+  name VARCHAR(160) NOT NULL,
+  description VARCHAR(1000) NULL,
+  icon_name VARCHAR(50) NOT NULL DEFAULT 'ShoppingBag',
+  pricing_mode ENUM('BOTH','PRESET_ONLY','MANUAL_ONLY') NOT NULL DEFAULT 'BOTH',
+  status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+  created_by CHAR(36) NULL,
+  updated_by CHAR(36) NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS service_catalog_products (
+  id CHAR(36) PRIMARY KEY,
+  category_id CHAR(36) NOT NULL,
+  code VARCHAR(80) NOT NULL UNIQUE,
+  name VARCHAR(160) NOT NULL,
+  description VARCHAR(1000) NULL,
+  price DECIMAL(15,2) NOT NULL,
+  badge VARCHAR(80) NULL,
+  status ENUM('ACTIVE','INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+  created_by CHAR(36) NULL,
+  updated_by CHAR(36) NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT chk_service_product_price CHECK (price > 0),
+  FOREIGN KEY (category_id) REFERENCES service_catalog_categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_service_products_category_status (category_id, status)
+) ENGINE=InnoDB;

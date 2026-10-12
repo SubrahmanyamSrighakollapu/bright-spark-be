@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { pool, withTransaction } from '../../database/pool.js';
 import { ApiError } from '../../shared/api-error.js';
+import { writeAuditLog } from '../../shared/audit.js';
 import type { z } from 'zod';
 import type { createPartySchema, listPartiesSchema } from './party.schemas.js';
+import { dispatchEvent } from '../notifications/notification.service.js';
 
 interface PartyRow extends RowDataPacket {
   id: string;
@@ -117,18 +119,71 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
     );
     if (result.affectedRows !== 1) throw new ApiError(409, 'STALE_PARTY_VERSION', 'Party was updated by another request; reload and retry');
   });
+
+  // Best-effort notifications for party users
+  try {
+    const [userRows] = await pool.query<(RowDataPacket & { user_id: string })[]>(
+      `SELECT id AS user_id FROM users WHERE party_id = ? AND deleted_at IS NULL`,
+      [id],
+    );
+    const userIds = userRows.map((r) => r.user_id);
+    if (userIds.length) {
+      if (status === 'SUSPENDED' || status === 'INACTIVE' || status === 'CLOSED') {
+        void dispatchEvent(
+          {
+            type: status === 'SUSPENDED' ? 'USER_SUSPENDED' : 'USER_BLOCKED',
+            category: 'USER',
+            severity: status === 'CLOSED' ? 'CRITICAL' : 'WARNING',
+            title: status === 'SUSPENDED' ? 'Your account has been suspended' : 'Your account has been disabled',
+            message: `Your Qin Star Pay account (party) status is now ${status}.${reason ? ` Reason: ${reason}` : ''}`,
+            entityType: 'PARTY',
+            entityId: id,
+            metadata: { reason: reason || null, actorUserId, status },
+          },
+          { kind: 'USER_IDS', userIds },
+          actorUserId
+        );
+      } else if (status === 'ACTIVE') {
+        void dispatchEvent(
+          {
+            type: 'ONBOARDING_COMPLETED',
+            category: 'APPROVAL',
+            severity: 'SUCCESS',
+            title: 'Your party account is active',
+            message: `Your Qin Star Pay party account is now ACTIVE. You can begin transacting on the platform.`,
+            entityType: 'PARTY',
+            entityId: id,
+            metadata: { actorUserId, status },
+          },
+          { kind: 'USER_IDS', userIds },
+          actorUserId
+        );
+      }
+    }
+  } catch {
+    // never propagate
+  }
+
   return getParty(id);
 }
 
 export async function reviewParty(id: string, decision: string, reasonCode: string | undefined, remarks: string, version: number, actorUserId: string) {
   await withTransaction(async (connection) => {
-    const [parties] = await connection.query<(RowDataPacket & { kyc_status: string })[]>(
-      `SELECT kyc_status FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, [id],
+    const [parties] = await connection.query<(RowDataPacket & { kyc_status: string; approval_status: string; account_status: string; created_at: Date })[]>(
+      `SELECT kyc_status, approval_status, account_status, created_at FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, [id],
     );
     if (!parties[0]) throw new ApiError(404, 'PARTY_NOT_FOUND', 'Party was not found');
-    if (decision === 'APPROVED' && parties[0].kyc_status !== 'APPROVED') {
+    const party = parties[0];
+    if (decision === 'APPROVED' && party.kyc_status !== 'APPROVED') {
       throw new ApiError(409, 'KYC_APPROVAL_REQUIRED', 'Network approval is allowed only after KYC approval');
     }
+
+    const beforeData = {
+      approvalStatus: party.approval_status,
+      kycStatus: party.kyc_status,
+      accountStatus: party.account_status,
+    };
+
     const accountStatus = decision === 'APPROVED' ? 'ACTIVE' : 'INACTIVE';
     const [result] = await connection.execute<ResultSetHeader>(
       `UPDATE parties SET approval_status = ?, account_status = ?, version = version + 1
@@ -145,6 +200,63 @@ export async function reviewParty(id: string, decision: string, reasonCode: stri
        VALUES (?, 'PARTY', ?, ?, ?, ?, ?)`,
       [randomUUID(), id, decision, actorUserId, reasonCode ?? null, remarks],
     );
+
+    const afterData = {
+      approvalStatus: decision,
+      kycStatus: party.kyc_status,
+      accountStatus,
+    };
+
+    const createdMs = party.created_at ? party.created_at.getTime() : Date.now();
+    await writeAuditLog(
+      {
+        action: decision === 'APPROVED' ? 'KYC_APPROVED' : 'KYC_REJECTED',
+        resourceType: 'PARTY',
+        resourceId: id,
+        actorUserId,
+        beforeData,
+        afterData,
+        metadata: {
+          reviewerUserId: actorUserId,
+          rejectionReasonCode: reasonCode ?? null,
+          remarks: remarks ?? null,
+          slaMet: true,
+          ttdMs: Date.now() - createdMs,
+        },
+      },
+      { actorUserId },
+      connection,
+    );
   });
+
+  // Best-effort approval/rejection notification to party users
+  try {
+    const [userRows] = await pool.query<(RowDataPacket & { user_id: string })[]>(
+      `SELECT id AS user_id FROM users WHERE party_id = ? AND deleted_at IS NULL`,
+      [id],
+    );
+    const userIds = userRows.map((r) => r.user_id);
+    if (userIds.length) {
+      void dispatchEvent(
+        {
+          type: decision === 'APPROVED' ? 'ONBOARDING_COMPLETED' : 'APPROVAL_COMPLETED',
+          category: 'APPROVAL',
+          severity: decision === 'APPROVED' ? 'SUCCESS' : 'WARNING',
+          title: decision === 'APPROVED' ? '🎉 Onboarding approved — welcome to Qin Star Pay' : 'Onboarding decision updated',
+          message: decision === 'APPROVED'
+            ? `Your onboarding request has been APPROVED. Your account is ACTIVE.`
+            : `Your onboarding request was not approved${remarks ? ` — ${remarks}` : '.'}`,
+          entityType: 'PARTY',
+          entityId: id,
+          metadata: { decision, reasonCode: reasonCode || null, remarks: remarks || null, actorUserId },
+        },
+        { kind: 'USER_IDS', userIds },
+        actorUserId
+      );
+    }
+  } catch {
+    // never propagate
+  }
+
   return getParty(id);
 }

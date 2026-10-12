@@ -6,6 +6,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   API_PREFIX: z.string().startsWith('/').default('/api/v1'),
   FRONTEND_ORIGIN: z.string().default('http://localhost:3000'),
+  TRUST_PROXY: z.string().trim().min(1).default('loopback'),
   DATABASE_HOST: z.string().min(1).default('127.0.0.1'),
   DATABASE_PORT: z.coerce.number().int().positive().default(3306),
   DATABASE_NAME: z.string().min(1).default('qin_star_pay'),

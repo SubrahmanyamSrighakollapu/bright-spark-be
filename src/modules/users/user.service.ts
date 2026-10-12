@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { pool, withTransaction } from '../../database/pool.js';
 import { ApiError } from '../../shared/api-error.js';
+import { writeAuditLog, contextFromAuth } from '../../shared/audit.js';
 import type { z } from 'zod';
 import type {
   createUserSchema,
@@ -13,6 +14,7 @@ import type {
   walletHoldSchema,
 } from './user.schemas.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
+import { dispatchEvent } from '../notifications/notification.service.js';
 
 interface UserRow extends RowDataPacket {
   user_id: string;
@@ -382,6 +384,23 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actor:
        VALUES (?, ?, 'INR', 'ACTIVE', 0.0000, 0.0000, 0.0000)`,
       [walletId, partyId]
     );
+
+    await writeAuditLog(
+      {
+        action: 'USER_CREATED',
+        resourceType: 'USER',
+        resourceId: userId,
+        afterData: {
+          fullName: input.fullName,
+          email: input.email,
+          role: input.role,
+          partyId,
+          status: 'PENDING',
+        },
+      },
+      contextFromAuth(actor),
+      connection,
+    );
   });
 
   return getUserById(userId);
@@ -394,10 +413,14 @@ export async function updateUserStatus(
   actorUserId?: string
 ) {
   const user = await getUserById(id);
-  if (status === 'ACTIVE' && user.kycStatus !== 'APPROVED') {
+  // KYC gate applies ONLY when activating a user who is still PENDING for the first time.
+  // Re-activating a SUSPENDED/INACTIVE user works without re-checking KYC.
+  const firstTimeActivation = user.status === 'PENDING' || user.status === undefined;
+  if (status === 'ACTIVE' && firstTimeActivation && user.kycStatus !== 'APPROVED') {
     throw new ApiError(409, 'KYC_APPROVAL_REQUIRED', 'The account cannot be activated before KYC approval');
   }
   const mappedStatus = status === 'BLOCKED' ? 'SUSPENDED' : status;
+  const oldStatus = user.status;
 
   await withTransaction(async (connection) => {
     await connection.execute(`UPDATE users SET status = ?, version = version + 1 WHERE id = ?`, [
@@ -418,7 +441,78 @@ export async function updateUserStatus(
       `UPDATE parties SET account_status = ?, version = version + 1 WHERE id = ?`,
       [partyAccountStatus, user.partyId]
     );
+
+    await writeAuditLog(
+      {
+        action: 'USER_STATUS_UPDATED',
+        resourceType: 'USER',
+        resourceId: user.id,
+        beforeData: { status: oldStatus },
+        afterData: { status: mappedStatus },
+        outcome: 'SUCCESS',
+        metadata: {
+          reason: reason ?? null,
+          transitionSource: 'user.service',
+        },
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
   });
+
+  // Best-effort status-change notifications (never block the admin response)
+  const baseMsg = reason ? ` Reason: ${reason}` : '';
+  try {
+    if (mappedStatus === 'SUSPENDED') {
+      void dispatchEvent(
+        {
+          type: 'USER_SUSPENDED',
+          category: 'USER',
+          severity: 'WARNING',
+          title: 'Your account has been suspended',
+          message: `Your Qin Star Pay account has been suspended by an administrator.${baseMsg} Please contact support for assistance.`,
+          entityType: 'USER',
+          entityId: user.id,
+          ...(user.partyId ? { relatedEntity: user.partyId } : {}),
+          metadata: { reason: reason || null, actorUserId: actorUserId || null },
+        },
+        { kind: 'USER_IDS', userIds: [user.id] },
+        actorUserId
+      );
+    } else if (mappedStatus === 'DISABLED' || mappedStatus === 'INACTIVE') {
+      void dispatchEvent(
+        {
+          type: 'USER_BLOCKED',
+          category: 'USER',
+          severity: 'CRITICAL',
+          title: 'Your account has been disabled',
+          message: `Your Qin Star Pay account has been disabled.${baseMsg}`,
+          entityType: 'USER',
+          entityId: user.id,
+          metadata: { reason: reason || null, actorUserId: actorUserId || null },
+        },
+        { kind: 'USER_IDS', userIds: [user.id] },
+        actorUserId
+      );
+    } else if (mappedStatus === 'ACTIVE') {
+      void dispatchEvent(
+        {
+          type: 'KYC_APPROVED',
+          category: 'USER',
+          severity: 'SUCCESS',
+          title: 'Your account is active',
+          message: `Your Qin Star Pay account has been activated. Welcome aboard!`,
+          entityType: 'USER',
+          entityId: user.id,
+          metadata: { actorUserId: actorUserId || null },
+        },
+        { kind: 'USER_IDS', userIds: [user.id] },
+        actorUserId
+      );
+    }
+  } catch {
+    // Never let notification failure break status updates
+  }
 
   return getUserById(user.id);
 }
@@ -491,6 +585,33 @@ export async function creditWallet(
       ledgerBalance: newLedger,
       holdBalance: currentHold,
     };
+
+    await writeAuditLog(
+      {
+        action: 'WALLET_CREDIT',
+        resourceType: 'WALLET',
+        resourceId: walletId ?? null,
+        beforeData: {
+          availableBalance: currentAvailable,
+          ledgerBalance: currentLedger,
+          holdBalance: currentHold,
+        },
+        afterData: {
+          availableBalance: newAvailable,
+          ledgerBalance: newLedger,
+          holdBalance: currentHold,
+        },
+        metadata: {
+          amount,
+          type: 'MANUAL_TOPUP',
+          txnRef: input.referenceNumber ?? null,
+          remarks,
+          operatorUserId: actorUserId ?? null,
+        },
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
   });
 
   return {
@@ -574,6 +695,33 @@ export async function debitWallet(
       ledgerBalance: newLedger,
       holdBalance: currentHold,
     };
+
+    await writeAuditLog(
+      {
+        action: 'WALLET_DEBIT',
+        resourceType: 'WALLET',
+        resourceId: wallet.id,
+        beforeData: {
+          availableBalance: currentAvailable,
+          ledgerBalance: currentLedger,
+          holdBalance: currentHold,
+        },
+        afterData: {
+          availableBalance: newAvailable,
+          ledgerBalance: newLedger,
+          holdBalance: currentHold,
+        },
+        metadata: {
+          amount,
+          type: 'PAYOUT',
+          txnRef: input.referenceNumber ?? null,
+          remarks,
+          operatorUserId: actorUserId ?? null,
+        },
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
   });
 
   return {
@@ -667,6 +815,33 @@ export async function holdWalletFunds(
       ledgerBalance: currentLedger,
       holdBalance: newHold,
     };
+
+    await writeAuditLog(
+      {
+        action: action === 'HOLD' ? 'WALLET_HOLD_APPLIED' : 'WALLET_HOLD_RELEASED',
+        resourceType: 'WALLET',
+        resourceId: walletId ?? null,
+        beforeData: {
+          availableBalance: currentAvailable,
+          ledgerBalance: currentLedger,
+          holdBalance: currentHold,
+        },
+        afterData: {
+          availableBalance: newAvailable,
+          ledgerBalance: currentLedger,
+          holdBalance: newHold,
+        },
+        metadata: {
+          amount,
+          type: action,
+          txnRef: null,
+          remarks,
+          operatorUserId: actorUserId ?? null,
+        },
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
   });
 
   return {
@@ -689,6 +864,45 @@ export async function updateUser(
   const user = await getUserById(id);
 
   await withTransaction(async (connection) => {
+    const [beforeRows] = await connection.query<(RowDataPacket & {
+      user_status: string;
+      user_email: string;
+      user_mobile: string;
+      user_full_name: string;
+      role_code: string | null;
+      party_display_name: string;
+      party_legal_name: string | null;
+    })[]>(
+      `SELECT
+         u.status AS user_status, u.email AS user_email, u.mobile AS user_mobile, u.full_name AS user_full_name,
+         r.code AS role_code,
+         p.display_name AS party_display_name, p.legal_name AS party_legal_name
+       FROM users u
+       INNER JOIN parties p ON p.id = u.party_id
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles r ON r.id = ur.role_id
+       WHERE u.id = ? FOR UPDATE`,
+      [user.id],
+    );
+    const before = beforeRows[0];
+    const beforeData = before ? {
+      status: before.user_status,
+      email: before.user_email,
+      mobile: before.user_mobile,
+      fullName: before.user_full_name,
+      role: before.role_code || user.role,
+      displayName: before.party_display_name,
+      legalName: before.party_legal_name,
+    } : {
+      status: user.status,
+      email: user.email,
+      mobile: user.mobile,
+      fullName: user.fullName,
+      role: user.role,
+      displayName: user.displayName,
+      legalName: user.legalName,
+    };
+
     // Check email / mobile conflict if changed
     if (input.email || input.mobile) {
       const email = input.email || user.email;
@@ -726,6 +940,28 @@ export async function updateUser(
         [input.displayName ?? null, input.legalName ?? null, input.email ?? null, input.mobile ?? null, user.partyId]
       );
     }
+
+    const afterData = {
+      status: input.status ?? beforeData.status,
+      email: input.email ?? beforeData.email,
+      mobile: input.mobile ?? beforeData.mobile,
+      fullName: input.fullName ?? beforeData.fullName,
+      role: beforeData.role,
+      displayName: input.displayName ?? beforeData.displayName,
+      legalName: input.legalName ?? beforeData.legalName,
+    };
+
+    await writeAuditLog(
+      {
+        action: 'USER_UPDATED',
+        resourceType: 'USER',
+        resourceId: user.id,
+        beforeData,
+        afterData,
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
   });
 
   if (input.status && input.status !== user.status) {
@@ -757,10 +993,27 @@ export async function resetPassword(
 
   const passwordHash = await bcrypt.hash(tempPassword, 12);
 
-  await pool.execute(
-    `UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP(6), version = version + 1 WHERE id = ?`,
-    [passwordHash, user.id]
-  );
+  await withTransaction(async (connection) => {
+    await connection.execute(
+      `UPDATE users SET password_hash = ?, password_changed_at = CURRENT_TIMESTAMP(6), version = version + 1 WHERE id = ?`,
+      [passwordHash, user.id]
+    );
+
+    await writeAuditLog(
+      {
+        action: 'USER_PASSWORD_RESET',
+        resourceType: 'USER',
+        resourceId: user.id,
+        afterData: { mode },
+        metadata: {
+          initiatorUserId: actorUserId ?? null,
+          reason: `Password reset via ${mode} mode`,
+        },
+      },
+      { actorUserId: actorUserId ?? null },
+      connection,
+    );
+  });
 
   return {
     message: mode === 'TEMP_PASSWORD'
@@ -872,18 +1125,43 @@ export async function transferUserAuthority(
       throw new ApiError(422, 'INVALID_AUTHORITY_HIERARCHY', `${user.role} cannot be assigned under ${target.party_type}`);
     }
 
+    await writeAuditLog(
+      {
+        action: 'HIERARCHY_TRANSFER_INITIATED',
+        resourceType: 'HIERARCHY_TRANSFER',
+        resourceId: `transfer-${user.id}`,
+        metadata: {
+          fromParentPartyId: currentParty.parent_party_id,
+          toParentPartyId: target.id,
+          userId: user.id,
+          actorUserId: actor.userId,
+          transferScope: 'SINGLE_USER',
+        },
+        outcome: 'SUCCESS',
+      },
+      contextFromAuth(actor),
+      connection,
+    );
+
     await connection.execute(
       'UPDATE parties SET parent_party_id = ?, version = version + 1 WHERE id = ?',
       [target.id, user.partyId],
     );
-    await connection.execute(
-      `INSERT INTO audit_logs
-        (actor_user_id, actor_party_id, action, resource_type, resource_id, outcome, before_data, after_data, metadata)
-       VALUES (?, ?, 'USER_AUTHORITY_TRANSFERRED', 'USER', ?, 'SUCCESS', ?, ?, ?)`,
-      [actor.userId, actor.partyId, user.id,
-        JSON.stringify({ parentPartyId: currentParty.parent_party_id, role: user.role }),
-        JSON.stringify({ parentPartyId: target.id, authorityType: target.party_type, role: user.role }),
-        JSON.stringify({ reason: input.reason, rolePreserved: true, creatorPreserved: true })],
+    await writeAuditLog(
+      {
+        action: 'USER_AUTHORITY_TRANSFERRED',
+        resourceType: 'USER',
+        resourceId: user.id,
+        outcome: 'SUCCESS',
+        beforeData: { parentPartyId: currentParty.parent_party_id, role: user.role },
+        afterData: { parentPartyId: target.id, authorityType: target.party_type, role: user.role },
+        metadata: { reason: input.reason, rolePreserved: true, creatorPreserved: true },
+      },
+      {
+        actorUserId: actor.userId,
+        actorPartyId: actor.partyId,
+      },
+      connection,
     );
   });
 

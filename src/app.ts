@@ -10,6 +10,8 @@ import { logger } from './config/logger.js';
 import { swaggerDocument } from './config/swagger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { requestContext } from './middleware/request-context.js';
+import { apiRequestSink } from './middleware/api-request-sink.js';
+import { reportsRouter } from './modules/reports/report.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { healthRouter } from './modules/health/health.routes.js';
 import { masterDataRouter } from './modules/master-data/master-data.routes.js';
@@ -24,11 +26,19 @@ import { headlineRouter } from './modules/headlines/headline.routes.js';
 import { settingRouter } from './modules/settings/setting.routes.js';
 import { walletRouter } from './modules/wallets/wallet.routes.js';
 import { kycRouter } from './modules/kyc/kyc.routes.js';
+import { notificationRouter } from './modules/notifications/notification.routes.js';
+import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js';
+import { loginHistoryRouter } from './modules/login-history/login-history.routes.js';
+import { payoutChargeRouter } from './modules/payout-charges/payout-charge.routes.js';
+import { configurationRouter } from './modules/configuration/configuration.routes.js';
 
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 1);
+  // Trust only explicitly configured proxy addresses/subnets. The default
+  // trusts a reverse proxy on the same host, while ignoring spoofed forwarding
+  // headers received directly from non-loopback clients.
+  app.set('trust proxy', env.TRUST_PROXY);
   app.use(requestContext);
   app.use(pinoHttp({ logger, genReqId: (request) => request.id || randomRequestId(request.headers['x-request-id']) }));
   if (env.SWAGGER_ENABLED) {
@@ -84,6 +94,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
   app.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+  app.use(apiRequestSink);
 
   app.use('/health', healthRouter);
   app.use(`${env.API_PREFIX}/auth`, authRouter);
@@ -98,7 +109,14 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/headlines`, headlineRouter);
   app.use(`${env.API_PREFIX}/settings`, settingRouter);
   app.use(`${env.API_PREFIX}/wallet`, walletRouter);
+  app.use(`${env.API_PREFIX}/wallets`, walletRouter);
   app.use(`${env.API_PREFIX}/kyc`, kycRouter);
+  app.use(`${env.API_PREFIX}/notifications`, notificationRouter);
+  app.use(`${env.API_PREFIX}/audit-logs`, auditLogRouter);
+  app.use(`${env.API_PREFIX}/login-history`, loginHistoryRouter);
+  app.use(`${env.API_PREFIX}/payout-charge-rules`, payoutChargeRouter);
+  app.use(`${env.API_PREFIX}/configuration`, configurationRouter);
+  app.use(`${env.API_PREFIX}/reports`, reportsRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

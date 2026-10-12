@@ -9,6 +9,7 @@ import { pool, withTransaction } from '../../database/pool.js';
 import { authenticate, requirePermission } from '../../middleware/auth.js';
 import { asyncHandler } from '../../shared/async-handler.js';
 import { ApiError } from '../../shared/api-error.js';
+import { writeAuditLog, writeAuditLogVoid, contextFromAuth } from '../../shared/audit.js';
 import { sendSuccess } from '../../shared/response.js';
 
 const uploadRoot = path.resolve(process.cwd(), 'uploads', 'kyc');
@@ -155,10 +156,45 @@ async function submitForReview(partyId: string, actorUserId: string) {
   const uploaded = new Set(docs.map((doc) => doc.document_type)); const missing = requiredCodes.filter((code) => !uploaded.has(code));
   if (missing.length) throw new ApiError(422, 'KYC_DOCUMENTS_MISSING', `Upload all required documents: ${missing.join(', ')}`);
   await withTransaction(async (connection) => {
+    const [beforeRows] = await connection.query<(RowDataPacket & { status: string; kyc_status: string })[]>(
+      `SELECT a.status, p.kyc_status
+         FROM onboarding_applications a
+         JOIN parties p ON p.id = a.party_id
+        WHERE a.id = ? FOR UPDATE`,
+      [applicationId],
+    );
+    const before = beforeRows[0];
+    const beforeData = {
+      applicationStatus: before?.status ?? null,
+      partyKycStatus: before?.kyc_status ?? null,
+    };
+
     await connection.execute(`UPDATE onboarding_applications SET status = 'SUBMITTED', submitted_at = CURRENT_TIMESTAMP(6), decided_at = NULL, decided_by = NULL, decision_reason = NULL WHERE id = ? AND status IN ('DRAFT','MORE_INFO_REQUIRED')`, [applicationId]);
     await connection.execute(`UPDATE kyc_documents SET status = 'UNDER_REVIEW' WHERE application_id = ?`, [applicationId]);
     await connection.execute(`UPDATE parties SET kyc_status = 'PENDING' WHERE id = ?`, [partyId]);
     await connection.execute(`INSERT INTO approval_events (id, subject_type, subject_id, action, actor_user_id, remarks) VALUES (?, 'KYC_APPLICATION', ?, 'SUBMITTED', ?, 'KYC application submitted for review')`, [randomUUID(), applicationId, actorUserId]);
+
+    const afterData = {
+      applicationStatus: 'SUBMITTED',
+      partyKycStatus: 'PENDING',
+    };
+
+    await writeAuditLog(
+      {
+        action: 'KYC_SUBMITTED',
+        resourceType: 'KYC_APPLICATION',
+        resourceId: applicationId,
+        beforeData,
+        afterData,
+        metadata: {
+          partyId,
+          actorUserId,
+          documentCount: docs.length,
+        },
+      },
+      { actorUserId },
+      connection,
+    );
   });
   return getApplication(applicationId);
 }
@@ -182,14 +218,66 @@ kycRouter.post('/documents', upload.single('file'), asyncHandler(async (request,
   const partyId = requirePartyId(request.auth!.partyId);
   const input = uploadFields.parse(request.body);
   if (!request.file) throw new ApiError(422, 'DOCUMENT_FILE_REQUIRED', 'Select a PDF, JPG or PNG file up to 5 MB');
-  return sendSuccess(response, await saveDocument(partyId, input, request.file), 201);
+  const result = await saveDocument(partyId, input, request.file);
+  const doc = result.documents.find((d: any) => d.type === input.documentType);
+  writeAuditLogVoid(
+    {
+      action: 'KYC_DOCUMENT_UPLOADED',
+      resourceType: 'KYC_DOCUMENT',
+      resourceId: doc?.id ?? null,
+      afterData: {
+        documentType: input.documentType,
+        fileName: request.file.originalname,
+        mimeType: request.file.mimetype,
+        sizeBytes: request.file.size,
+      },
+      metadata: {
+        documentType: input.documentType,
+        docId: doc?.id ?? null,
+        partyId,
+        applicationId: result.id,
+      },
+    },
+    contextFromAuth(request.auth!, {
+      requestId: request.requestId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    }),
+  );
+  return sendSuccess(response, result, 201);
 }));
 
 kycRouter.post('/parties/:partyId/documents', upload.single('file'), asyncHandler(async (request, response) => {
   const { partyId } = partyParams.parse(request.params); const input = uploadFields.parse(request.body);
   await assertCanManagePartyKyc(partyId, request.auth!);
   if (!request.file) throw new ApiError(422, 'DOCUMENT_FILE_REQUIRED', 'Select a PDF, JPG or PNG file up to 5 MB');
-  return sendSuccess(response, await saveDocument(partyId, input, request.file), 201);
+  const result = await saveDocument(partyId, input, request.file);
+  const doc = result.documents.find((d: any) => d.type === input.documentType);
+  writeAuditLogVoid(
+    {
+      action: 'KYC_DOCUMENT_UPLOADED',
+      resourceType: 'KYC_DOCUMENT',
+      resourceId: doc?.id ?? null,
+      afterData: {
+        documentType: input.documentType,
+        fileName: request.file.originalname,
+        mimeType: request.file.mimetype,
+        sizeBytes: request.file.size,
+      },
+      metadata: {
+        documentType: input.documentType,
+        docId: doc?.id ?? null,
+        partyId,
+        applicationId: result.id,
+      },
+    },
+    contextFromAuth(request.auth!, {
+      requestId: request.requestId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    }),
+  );
+  return sendSuccess(response, result, 201);
 }));
 
 kycRouter.post('/submit', asyncHandler(async (request, response) => {
@@ -233,9 +321,11 @@ kycRouter.post('/applications/:appId/docs/:docId/reject', requirePermission('KYC
 
 kycRouter.post('/applications/:id/approve', requirePermission('KYC_REVIEW'), asyncHandler(async (request, response) => {
   const { id } = idSchema.parse(request.params); const { remarks } = remarksSchema.parse(request.body);
-  const [applications] = await pool.query<(RowDataPacket & { status: string; party_id: string })[]>('SELECT status, party_id FROM onboarding_applications WHERE id = ?', [id]);
+  const [applications] = await pool.query<(RowDataPacket & { status: string; party_id: string; created_at: Date })[]>('SELECT status, party_id, created_at FROM onboarding_applications WHERE id = ?', [id]);
   if (!applications[0] || !['SUBMITTED', 'UNDER_REVIEW'].includes(applications[0].status)) throw new ApiError(409, 'KYC_NOT_REVIEWABLE', 'Only a submitted application can be approved');
-  const requirements = await requirementsForParty(applications[0].party_id);
+  const partyId = applications[0].party_id;
+  const appCreatedAt = applications[0].created_at;
+  const requirements = await requirementsForParty(partyId);
   const requiredCodes = requirements.filter((item) => Boolean((item.configuration as { required?: boolean }).required)).map((item) => item.code);
   const [verified] = await pool.query<(RowDataPacket & { document_type: string })[]>(`SELECT document_type FROM kyc_documents WHERE application_id = ? AND status = 'VERIFIED'`, [id]);
   const verifiedCodes = new Set(verified.map((doc) => doc.document_type));
@@ -243,9 +333,57 @@ kycRouter.post('/applications/:id/approve', requirePermission('KYC_REVIEW'), asy
   const [unverified] = await pool.query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) total FROM kyc_documents WHERE application_id = ? AND status <> 'VERIFIED'`, [id]);
   if (Number(unverified[0]?.total)) throw new ApiError(422, 'DOCUMENTS_NOT_VERIFIED', 'Verify every uploaded document before approving KYC');
   await withTransaction(async (connection) => {
+    const [beforeRows] = await connection.query<(RowDataPacket & { app_status: string; party_kyc_status: string; party_approval_status: string; party_account_status: string })[]>(
+      `SELECT a.status AS app_status, p.kyc_status AS party_kyc_status,
+              p.approval_status AS party_approval_status, p.account_status AS party_account_status
+         FROM onboarding_applications a
+         JOIN parties p ON p.id = a.party_id
+        WHERE a.id = ? FOR UPDATE`,
+      [id],
+    );
+    const before = beforeRows[0];
+    const beforeData = before ? {
+      applicationStatus: before.app_status,
+      partyKycStatus: before.party_kyc_status,
+      partyApprovalStatus: before.party_approval_status,
+      partyAccountStatus: before.party_account_status,
+    } : null;
+
     await connection.execute(`UPDATE onboarding_applications SET status = 'APPROVED', decided_at = CURRENT_TIMESTAMP(6), decided_by = ?, decision_reason = ? WHERE id = ?`, [request.auth!.userId, remarks ?? null, id]);
     await connection.execute(`UPDATE parties p JOIN onboarding_applications a ON a.party_id = p.id SET p.kyc_status = 'APPROVED', p.approval_status = 'PENDING_APPROVAL', p.account_status = 'PENDING', p.version = p.version + 1 WHERE a.id = ?`, [id]);
     await connection.execute(`INSERT INTO approval_events (id, subject_type, subject_id, action, actor_user_id, remarks) VALUES (?, 'KYC_APPLICATION', ?, 'APPROVED', ?, ?)`, [randomUUID(), id, request.auth!.userId, remarks ?? null]);
+
+    const afterData = {
+      applicationStatus: 'APPROVED',
+      partyKycStatus: 'APPROVED',
+      partyApprovalStatus: 'PENDING_APPROVAL',
+      partyAccountStatus: 'PENDING',
+    };
+
+    const createdMs = appCreatedAt ? appCreatedAt.getTime() : Date.now();
+    await writeAuditLog(
+      {
+        action: 'KYC_APPROVED',
+        resourceType: 'PARTY',
+        resourceId: partyId,
+        beforeData,
+        afterData,
+        metadata: {
+          reviewerUserId: request.auth!.userId,
+          rejectionReasonCode: null,
+          remarks: remarks ?? null,
+          slaMet: true,
+          ttdMs: Date.now() - createdMs,
+          applicationId: id,
+        },
+      },
+      contextFromAuth(request.auth!, {
+        requestId: request.requestId,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      }),
+      connection,
+    );
   });
   return sendSuccess(response, await getApplication(id));
 }));
@@ -253,10 +391,60 @@ kycRouter.post('/applications/:id/approve', requirePermission('KYC_REVIEW'), asy
 kycRouter.post('/applications/:id/reject', requirePermission('KYC_REVIEW'), asyncHandler(async (request, response) => {
   const { id } = idSchema.parse(request.params); const { reason } = reasonSchema.parse(request.body);
   await withTransaction(async (connection) => {
+    const [beforeRows] = await connection.query<(RowDataPacket & { party_id: string; app_status: string; party_kyc_status: string; party_approval_status: string; party_account_status: string; created_at: Date })[]>(
+      `SELECT a.party_id, a.status AS app_status, a.created_at,
+              p.kyc_status AS party_kyc_status,
+              p.approval_status AS party_approval_status, p.account_status AS party_account_status
+         FROM onboarding_applications a
+         JOIN parties p ON p.id = a.party_id
+        WHERE a.id = ? FOR UPDATE`,
+      [id],
+    );
+    const before = beforeRows[0];
+    const beforeData = before ? {
+      applicationStatus: before.app_status,
+      partyKycStatus: before.party_kyc_status,
+      partyApprovalStatus: before.party_approval_status,
+      partyAccountStatus: before.party_account_status,
+    } : null;
+    const partyId = before?.party_id;
+    const createdMs = before?.created_at ? before.created_at.getTime() : Date.now();
+
     await connection.execute(`UPDATE onboarding_applications SET status = 'REJECTED', decided_at = CURRENT_TIMESTAMP(6), decided_by = ?, decision_reason = ? WHERE id = ?`, [request.auth!.userId, reason, id]);
     await connection.execute(`UPDATE parties p JOIN onboarding_applications a ON a.party_id = p.id SET p.kyc_status = 'REJECTED', p.approval_status = 'PENDING_APPROVAL', p.account_status = 'INACTIVE', p.version = p.version + 1 WHERE a.id = ?`, [id]);
     await connection.execute(`UPDATE users u JOIN onboarding_applications a ON a.party_id = u.party_id SET u.status = 'INACTIVE', u.version = u.version + 1 WHERE a.id = ? AND u.deleted_at IS NULL`, [id]);
     await connection.execute(`INSERT INTO approval_events (id, subject_type, subject_id, action, actor_user_id, remarks) VALUES (?, 'KYC_APPLICATION', ?, 'REJECTED', ?, ?)`, [randomUUID(), id, request.auth!.userId, reason]);
+
+    const afterData = {
+      applicationStatus: 'REJECTED',
+      partyKycStatus: 'REJECTED',
+      partyApprovalStatus: 'PENDING_APPROVAL',
+      partyAccountStatus: 'INACTIVE',
+    };
+
+    await writeAuditLog(
+      {
+        action: 'KYC_REJECTED',
+        resourceType: 'PARTY',
+        resourceId: partyId ?? null,
+        beforeData,
+        afterData,
+        metadata: {
+          reviewerUserId: request.auth!.userId,
+          rejectionReasonCode: reason,
+          remarks: reason,
+          slaMet: true,
+          ttdMs: Date.now() - createdMs,
+          applicationId: id,
+        },
+      },
+      contextFromAuth(request.auth!, {
+        requestId: request.requestId,
+        ipAddress: request.ip,
+        userAgent: request.headers['user-agent'],
+      }),
+      connection,
+    );
   });
   return sendSuccess(response, await getApplication(id));
 }));

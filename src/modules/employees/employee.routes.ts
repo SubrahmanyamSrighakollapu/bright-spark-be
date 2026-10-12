@@ -8,6 +8,7 @@ import { authenticate, requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { ApiError } from '../../shared/api-error.js';
 import { asyncHandler } from '../../shared/async-handler.js';
+import { writeAuditLog } from '../../shared/audit.js';
 import { sendSuccess } from '../../shared/response.js';
 import { createEmployeeSchema, employeeIdSchema, listEmployeesSchema, resetEmployeePasswordSchema, updateEmployeeSchema, updateEmployeeStatusSchema } from './employee.schemas.js';
 import { revokeAllRefreshTokens } from '../auth/auth.repository.js';
@@ -109,8 +110,11 @@ employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEm
     await connection.execute(`INSERT INTO employee_profiles
       (id, user_id, employee_code, department_code, designation, manager_user_id, joining_date, shift_code, created_by)
       VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)`, [employeeId, userId, employeeCode, input.departmentCode, input.managerUserId ?? null, input.joiningDate, input.shiftCode, request.auth!.userId]);
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, after_data)
-      VALUES (?, 'EMPLOYEE_CREATED', 'EMPLOYEE', ?, 'SUCCESS', ?)`, [request.auth!.userId, employeeId, JSON.stringify({ employeeCode, roleId, departmentCode: input.departmentCode })]);
+    await writeAuditLog(
+      { action: 'EMPLOYEE_CREATED', resourceType: 'EMPLOYEE', resourceId: employeeId, outcome: 'SUCCESS', afterData: { employeeCode, roleId, departmentCode: input.departmentCode } },
+      { actorUserId: request.auth!.userId, actorPartyId: request.auth!.partyId, requestId: request.requestId, ipAddress: request.ip, userAgent: request.headers['user-agent'] },
+      connection
+    );
   });
   const [rows] = await pool.query<EmployeeRow[]>(`${employeeSelect} WHERE ep.id = ?`, [employeeId]);
   return sendSuccess(response, mapEmployee(rows[0]!), 201);
@@ -132,8 +136,11 @@ employeeRouter.put('/:id', requirePermission('EMPLOYEE_UPDATE'), validate(employ
       [input.departmentCode, input.designation ?? null, input.managerUserId ?? null, input.joiningDate ?? null, input.shiftCode, id]);
     await connection.execute('DELETE ur FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.role_category = ?', [userId, 'EMPLOYEE']);
     await connection.execute('INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES (?, ?, ?)', [userId, input.roleId, request.auth!.userId]);
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, after_data, metadata)
-      VALUES (?, 'EMPLOYEE_UPDATED', 'EMPLOYEE', ?, 'SUCCESS', ?, ?)`, [request.auth!.userId, id, JSON.stringify({ roleId: input.roleId, departmentCode: input.departmentCode }), JSON.stringify({ reason: input.reason })]);
+    await writeAuditLog(
+      { action: 'EMPLOYEE_UPDATED', resourceType: 'EMPLOYEE', resourceId: id, outcome: 'SUCCESS', afterData: { roleId: input.roleId, departmentCode: input.departmentCode }, metadata: { reason: input.reason } },
+      { actorUserId: request.auth!.userId, actorPartyId: request.auth!.partyId, requestId: request.requestId, ipAddress: request.ip, userAgent: request.headers['user-agent'] },
+      connection
+    );
   });
   const [rows] = await pool.query<EmployeeRow[]>(`${employeeSelect} WHERE ep.id = ?`, [id]);
   return sendSuccess(response, mapEmployee(rows[0]!));
@@ -155,8 +162,11 @@ employeeRouter.patch('/:id/status', requirePermission('EMPLOYEE_UPDATE'), valida
     await connection.execute('UPDATE employee_profiles SET employment_status = ?, updated_at = NOW() WHERE id = ?', [status, id]);
     const userStatus = status === 'ACTIVE' ? 'ACTIVE' : status === 'SUSPENDED' ? 'SUSPENDED' : 'DISABLED';
     await connection.execute('UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?', [userId, userStatus]);
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, after_data, metadata)
-      VALUES (?, 'EMPLOYEE_STATUS_UPDATED', 'EMPLOYEE', ?, 'SUCCESS', ?, ?)`, [request.auth!.userId, id, JSON.stringify({ status }), JSON.stringify({ reason })]);
+    await writeAuditLog(
+      { action: 'EMPLOYEE_STATUS_UPDATED', resourceType: 'EMPLOYEE', resourceId: id, outcome: 'SUCCESS', afterData: { status }, metadata: { reason } },
+      { actorUserId: request.auth!.userId, actorPartyId: request.auth!.partyId, requestId: request.requestId, ipAddress: request.ip, userAgent: request.headers['user-agent'] },
+      connection
+    );
   });
 
 
@@ -178,8 +188,11 @@ employeeRouter.post('/:id/reset-password', requirePermission('EMPLOYEE_UPDATE'),
       must_change_password = TRUE, failed_login_count = 0, locked_until = NULL, version = version + 1 WHERE id = ?`,
       [passwordHash, employees[0].user_id]);
     await revokeAllRefreshTokens(connection, employees[0].user_id);
-    await connection.execute(`INSERT INTO audit_logs (actor_user_id, action, resource_type, resource_id, outcome, metadata)
-      VALUES (?, 'EMPLOYEE_PASSWORD_RESET', 'EMPLOYEE', ?, 'SUCCESS', ?)`, [request.auth!.userId, id, JSON.stringify({ reason: input.reason })]);
+    await writeAuditLog(
+      { action: 'EMPLOYEE_PASSWORD_RESET', resourceType: 'EMPLOYEE', resourceId: id, outcome: 'SUCCESS', metadata: { reason: input.reason } },
+      { actorUserId: request.auth!.userId, actorPartyId: request.auth!.partyId, requestId: request.requestId, ipAddress: request.ip, userAgent: request.headers['user-agent'] },
+      connection
+    );
   });
   return sendSuccess(response, { temporaryPassword });
 }));

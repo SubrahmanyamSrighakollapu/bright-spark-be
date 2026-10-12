@@ -13,6 +13,10 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, request, respo
     ? error
     : databaseCode === 'ER_DUP_ENTRY'
       ? new ApiError(409, 'DUPLICATE_RESOURCE', 'A record with the same unique identifier already exists')
+      : databaseCode === 'ER_ROW_IS_REFERENCED_2'
+        ? new ApiError(409, 'RESOURCE_IN_USE', 'This record is currently used by another configuration and cannot be deleted')
+        : databaseCode === 'ER_NO_REFERENCED_ROW_2'
+          ? new ApiError(422, 'INVALID_REFERENCE', 'One or more selected records do not exist or are inactive')
       : new ApiError(500, 'INTERNAL_SERVER_ERROR', 'An unexpected error occurred');
 
   if (apiError.statusCode >= 500) {

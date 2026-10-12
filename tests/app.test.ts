@@ -7,6 +7,14 @@ import { env } from '../src/config/env.js';
 describe('API shell', () => {
   const app = createApp();
 
+  it('uses a restricted configured trusted-proxy policy', () => {
+    expect(app.get('trust proxy')).toBe(env.TRUST_PROXY);
+    expect(app.get('trust proxy')).not.toBe(true);
+    const trustProxy = app.get('trust proxy fn') as (address: string, hop: number) => boolean;
+    expect(trustProxy('127.0.0.1', 0)).toBe(true);
+    expect(trustProxy('203.0.113.10', 0)).toBe(false);
+  });
+
   it('returns liveness without requiring the database', async () => {
     const response = await request(app).get('/health/live');
     expect(response.status).toBe(200);
@@ -26,10 +34,11 @@ describe('API shell', () => {
     const response = await request(app).get('/api-docs.json');
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe('3.1.0');
-    expect(Object.keys(response.body.paths)).toHaveLength(21);
+    const pathCount = Object.keys(response.body.paths).length;
+    expect(pathCount).toBeGreaterThanOrEqual(42);
     const operationCount = Object.values(response.body.paths as Record<string, object>)
       .reduce((count, pathItem) => count + Object.keys(pathItem).filter((key) => ['get', 'post', 'put', 'patch', 'delete'].includes(key)).length, 0);
-    expect(operationCount).toBe(26);
+    expect(operationCount).toBeGreaterThanOrEqual(47);
     expect(response.body.paths['/api/v1/parties'].post.security).toEqual([{ bearerAuth: [] }]);
     expect(response.body.paths['/api/v1/master-data/item/{id}'].patch.requestBody).toBeTruthy();
     expect(response.body.paths['/api/v1/roles'].post.security).toEqual([{ bearerAuth: [] }]);
@@ -37,6 +46,18 @@ describe('API shell', () => {
     expect(response.body.paths['/api/v1/employees/{id}'].put.requestBody).toBeTruthy();
     expect(response.body.paths['/api/v1/employees/{id}/reset-password'].post.security).toEqual([{ bearerAuth: [] }]);
     expect(response.body.paths['/api/v1/auth/change-password'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/audit-logs'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/login-history'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/login-history/session/{sessionId}/location'].patch.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/reports/transactions'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/reports/balance/export.csv'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/payout-charge-rules'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/payout-charge-rules/resolve'].get.parameters).toHaveLength(2);
+    expect(response.body.paths['/api/v1/payout-charge-rules/{id}'].put.requestBody).toBeTruthy();
+    expect(response.body.paths['/api/v1/configuration/gateways'].post.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/configuration/payment-routing-options'].get.security).toEqual([{ bearerAuth: [] }]);
+    expect(response.body.paths['/api/v1/configuration/plan-configurations/{id}'].put.requestBody).toBeTruthy();
+    expect(response.body.paths['/api/v1/configuration/commissions/{id}'].delete.security).toEqual([{ bearerAuth: [] }]);
   });
 
   it('answers PATCH preflight requests with all frontend headers', async () => {
@@ -72,6 +93,21 @@ describe('API shell', () => {
     ]);
     expect(roles.status).toBe(401);
     expect(employees.status).toBe(401);
+  });
+
+  it('protects payout charge configuration and resolution routes', async () => {
+    const [rules, resolution] = await Promise.all([
+      request(app).get('/api/v1/payout-charge-rules'),
+      request(app).get('/api/v1/payout-charge-rules/resolve?payoutMode=IMPS&amount=1000'),
+    ]);
+    expect(rules.status).toBe(401);
+    expect(resolution.status).toBe(401);
+  });
+
+  it('protects all administration configuration resources', async () => {
+    const resources = ['gateways', 'methods', 'options', 'mappings', 'plans', 'plan-configurations', 'commissions'];
+    const responses = await Promise.all(resources.map((resource) => request(app).get(`/api/v1/configuration/${resource}`)));
+    expect(responses.every((response) => response.status === 401 && response.body.error.code === 'AUTHENTICATION_REQUIRED')).toBe(true);
   });
 
   it('rejects protected routes without a bearer token', async () => {

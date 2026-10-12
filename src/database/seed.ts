@@ -20,7 +20,8 @@ const permissions = [
   ['PARTY_READ', 'PARTY', 'READ'], ['PARTY_CREATE', 'PARTY', 'CREATE'], ['PARTY_STATUS_UPDATE', 'PARTY', 'STATUS_UPDATE'], ['PARTY_APPROVE', 'PARTY', 'APPROVE'],
   ['MASTER_DATA_READ', 'MASTER_DATA', 'READ'], ['MASTER_DATA_WRITE', 'MASTER_DATA', 'WRITE'], ['USER_READ', 'USER', 'READ'], ['USER_WRITE', 'USER', 'WRITE'],
   ['KYC_READ', 'KYC', 'READ'], ['KYC_REVIEW', 'KYC', 'REVIEW'], ['PROVIDER_READ', 'PROVIDER', 'READ'], ['PROVIDER_WRITE', 'PROVIDER', 'WRITE'],
-  ['NOTIFICATION_READ', 'NOTIFICATION', 'READ'], ['AUDIT_READ', 'AUDIT', 'READ'], ['REPORT_READ', 'REPORT', 'READ'],
+  ['NOTIFICATION_READ', 'NOTIFICATION', 'READ'], ['ANNOUNCEMENT_PUBLISH', 'NOTIFICATION', 'ANNOUNCEMENT_PUBLISH'], ['AUDIT_READ', 'AUDIT', 'READ'], ['REPORT_READ', 'REPORT', 'READ'],
+  ['EXPORT_CSV', 'AUDIT', 'EXPORT'], ['LOGIN_HISTORY_READ', 'AUDIT', 'READ'],
   ['ROLE_READ', 'ROLE', 'READ'], ['ROLE_CREATE', 'ROLE', 'CREATE'], ['ROLE_UPDATE', 'ROLE', 'UPDATE'],
   ['EMPLOYEE_READ', 'EMPLOYEE', 'READ'], ['EMPLOYEE_CREATE', 'EMPLOYEE', 'CREATE'], ['EMPLOYEE_UPDATE', 'EMPLOYEE', 'UPDATE'],
 ] as const;
@@ -28,13 +29,13 @@ const permissions = [
 const defaultDemoPassword = 'Demo@123456';
 
 const rolePermissionMap: Record<string, string[]> = {
-  MASTER_DISTRIBUTOR: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'REPORT_READ', 'AUDIT_READ'],
-  DISTRIBUTOR: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'REPORT_READ'],
-  RETAILER: ['PARTY_READ', 'USER_READ', 'REPORT_READ'],
-  OPERATIONS: ['PARTY_READ', 'PARTY_STATUS_UPDATE', 'PARTY_APPROVE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'KYC_REVIEW', 'REPORT_READ'],
-  ACCOUNTS: ['PARTY_READ', 'USER_READ', 'MASTER_DATA_READ', 'REPORT_READ', 'AUDIT_READ'],
-  KYC: ['PARTY_READ', 'KYC_READ', 'KYC_REVIEW'],
-  SALES: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'REPORT_READ'],
+  MASTER_DISTRIBUTOR: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'REPORT_READ', 'AUDIT_READ', 'NOTIFICATION_READ'],
+  DISTRIBUTOR: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'REPORT_READ', 'NOTIFICATION_READ'],
+  RETAILER: ['PARTY_READ', 'USER_READ', 'REPORT_READ', 'NOTIFICATION_READ'],
+  OPERATIONS: ['PARTY_READ', 'PARTY_STATUS_UPDATE', 'PARTY_APPROVE', 'USER_READ', 'USER_WRITE', 'KYC_READ', 'KYC_REVIEW', 'REPORT_READ', 'NOTIFICATION_READ', 'ANNOUNCEMENT_PUBLISH', 'LOGIN_HISTORY_READ'],
+  ACCOUNTS: ['PARTY_READ', 'USER_READ', 'MASTER_DATA_READ', 'REPORT_READ', 'AUDIT_READ', 'NOTIFICATION_READ', 'EXPORT_CSV', 'LOGIN_HISTORY_READ'],
+  KYC: ['PARTY_READ', 'KYC_READ', 'KYC_REVIEW', 'NOTIFICATION_READ'],
+  SALES: ['PARTY_READ', 'PARTY_CREATE', 'USER_READ', 'REPORT_READ', 'NOTIFICATION_READ'],
 };
 
 interface DemoUserDef {
@@ -298,23 +299,7 @@ async function seed(): Promise<void> {
       );
     }
 
-    // 10. Pricing & Retailer Plans Seeding
-    const seedPlans = [
-      ['DEFAULT_RETAILER', 'Standard Retailer Plan', 1, 'ACTIVE'],
-      ['GOLD_COMMISSION', 'Gold Retailer Plan', 1, 'ACTIVE'],
-      ['PLATINUM_COMMISSION', 'Platinum Partner Plan', 1, 'ACTIVE'],
-    ] as const;
-
-    for (const [code, name, version, status] of seedPlans) {
-      await connection.execute(
-        `INSERT INTO pricing_plans (id, code, name, version, status)
-         VALUES (?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status)`,
-        [randomUUID(), code, name, version, status]
-      );
-    }
-
-    // 11. Service Categories & Headlines Master Data Seeding
+    // 10. Service Categories & Headlines Master Data Seeding
     const seedMasterItems = [
       ['SERVICE_CATEGORY', 'MOBILE_RECHARGE', 'Mobile Prepaid & Postpaid', 'Telecom recharge and bill payment services', 10],
       ['SERVICE_CATEGORY', 'DTH', 'DTH Recharge', 'Direct-to-home TV subscription payments', 20],

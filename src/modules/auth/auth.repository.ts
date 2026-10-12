@@ -60,7 +60,7 @@ export async function recordSuccessfulLogin(userId: string): Promise<void> {
 
 export async function insertRefreshToken(
   connection: PoolConnection,
-  token: { id: string; userId: string; tokenHash: string; expiresAt: Date; ipAddress?: string | undefined; userAgent?: string | undefined },
+  token: { id: string; userId: string; tokenHash: string; expiresAt: Date; ipAddress?: string | null | undefined; userAgent?: string | null | undefined },
 ): Promise<void> {
   await connection.execute(
     `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, ip_address, user_agent)
@@ -72,7 +72,7 @@ export async function insertRefreshToken(
 export async function rotateRefreshToken(
   connection: PoolConnection,
   oldHash: string,
-  replacement: { id: string; userId: string; tokenHash: string; expiresAt: Date; ipAddress?: string | undefined; userAgent?: string | undefined },
+  replacement: { id: string; userId: string; tokenHash: string; expiresAt: Date; ipAddress?: string | null | undefined; userAgent?: string | null | undefined },
 ): Promise<boolean> {
   const [rows] = await connection.query<RowDataPacket[]>(
     `SELECT id FROM refresh_tokens

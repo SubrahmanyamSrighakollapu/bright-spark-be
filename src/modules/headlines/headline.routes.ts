@@ -4,6 +4,7 @@ import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
 import { z } from 'zod';
 import { pool } from '../../database/pool.js';
 import { authenticate, requirePermission } from '../../middleware/auth.js';
+import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../shared/async-handler.js';
 import { ApiError } from '../../shared/api-error.js';
 import { sendSuccess } from '../../shared/response.js';
@@ -15,22 +16,16 @@ interface HeadlineRow extends RowDataPacket {
   id: string; category: string; code: string; label: string; description: string | null; configuration: string | null; sort_order: number; is_active: number; created_at: Date;
 }
 
-const defaultHeadlines = [
-  { id: 'h1', category: 'HEADLINE', code: 'HL_001', title: 'System Maintenance Scheduled', message: 'Scheduled system maintenance on Sunday from 02:00 AM to 04:00 AM IST.', targetRoles: ['ALL'], isActive: true, sortOrder: 10 },
-  { id: 'h2', category: 'NOTICE_BOARD', code: 'NB_001', title: 'New ICICI BBPS Biller Added', message: 'Electricity bill payment for TNEB and UPVCL is now live with instant confirmation.', targetRoles: ['RETAILER', 'DISTRIBUTOR'], isActive: true, sortOrder: 20 },
-  { id: 'h3', category: 'TICKER', code: 'TK_001', title: 'High Commission Surcharge Offer', message: 'Earn up to 0.80% extra margin on AEPS transaction volumes exceeding 50,000 INR today!', targetRoles: ['RETAILER'], isActive: true, sortOrder: 30 },
-];
+const headlineCategorySchema = z.enum(['HEADLINE', 'NOTICE_BOARD', 'TICKER']);
+const headlineQuerySchema = z.object({ category: headlineCategorySchema.optional() });
+const headlineIdSchema = z.object({ id: z.string().uuid() });
 
-headlineRouter.get('/', asyncHandler(async (request, response) => {
-  const categoryFilter = request.query.category ? String(request.query.category) : undefined;
+headlineRouter.get('/', validate(headlineQuerySchema, 'query'), asyncHandler(async (request, response) => {
+  const { category: categoryFilter } = headlineQuerySchema.parse(request.query);
   const [rows] = await pool.query<HeadlineRow[]>(
     `SELECT * FROM master_data WHERE category IN ('HEADLINE', 'NOTICE_BOARD', 'TICKER') ${categoryFilter ? 'AND category = ?' : ''} ORDER BY sort_order ASC, created_at DESC`,
     categoryFilter ? [categoryFilter] : []
   );
-
-  if (rows.length === 0) {
-    return sendSuccess(response, categoryFilter ? defaultHeadlines.filter(h => h.category === categoryFilter) : defaultHeadlines);
-  }
 
   return sendSuccess(response, rows.map((r) => ({
     id: r.id,
@@ -46,7 +41,7 @@ headlineRouter.get('/', asyncHandler(async (request, response) => {
 }));
 
 const headlineSchema = z.object({
-  category: z.enum(['HEADLINE', 'NOTICE_BOARD', 'TICKER']).default('HEADLINE'),
+  category: headlineCategorySchema.default('HEADLINE'),
   code: z.string().trim().optional(),
   title: z.string().trim().min(2).max(200),
   message: z.string().trim().min(2).max(1000),
@@ -60,7 +55,7 @@ const headlineSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-headlineRouter.post('/', requirePermission('MASTER_DATA_WRITE'), asyncHandler(async (request, response) => {
+headlineRouter.post('/', requirePermission('MASTER_DATA_WRITE'), validate(headlineSchema), asyncHandler(async (request, response) => {
   const input = headlineSchema.parse(request.body);
   const id = randomUUID();
   const code = input.code || `${input.category.slice(0, 2)}_${Math.floor(100 + Math.random() * 900)}`;
@@ -82,9 +77,9 @@ headlineRouter.post('/', requirePermission('MASTER_DATA_WRITE'), asyncHandler(as
   return sendSuccess(response, { id, category: input.category, code, title: input.title, message: input.message, configuration: JSON.parse(config), isActive: input.isActive }, 201);
 }));
 
-const updateHeadlineSchema = headlineSchema.partial();
+const updateHeadlineSchema = headlineSchema.omit({ category: true, code: true }).partial();
 
-headlineRouter.patch('/:id', requirePermission('MASTER_DATA_WRITE'), asyncHandler(async (request, response) => {
+headlineRouter.patch('/:id', requirePermission('MASTER_DATA_WRITE'), validate(headlineIdSchema, 'params'), validate(updateHeadlineSchema), asyncHandler(async (request, response) => {
   const id = request.params.id as string;
   const input = updateHeadlineSchema.parse(request.body);
 
@@ -119,10 +114,20 @@ headlineRouter.patch('/:id', requirePermission('MASTER_DATA_WRITE'), asyncHandle
     [newTitle, newMessage, newConfig, newSortOrder, newIsActive, id]
   );
 
-  return sendSuccess(response, { id, title: newTitle, message: newMessage, configuration: JSON.parse(newConfig), isActive: newIsActive });
+  return sendSuccess(response, {
+    id,
+    category: current.category,
+    code: current.code,
+    title: newTitle,
+    message: newMessage,
+    configuration: JSON.parse(newConfig),
+    sortOrder: newSortOrder,
+    isActive: newIsActive,
+    createdAt: current.created_at,
+  });
 }));
 
-headlineRouter.patch('/:id/status', requirePermission('MASTER_DATA_WRITE'), asyncHandler(async (request, response) => {
+headlineRouter.patch('/:id/status', requirePermission('MASTER_DATA_WRITE'), validate(headlineIdSchema, 'params'), asyncHandler(async (request, response) => {
   const id = request.params.id as string;
   const [existing] = await pool.query<HeadlineRow[]>(
     'SELECT is_active FROM master_data WHERE id = ? AND category IN ("HEADLINE", "NOTICE_BOARD", "TICKER")',
@@ -131,13 +136,13 @@ headlineRouter.patch('/:id/status', requirePermission('MASTER_DATA_WRITE'), asyn
   const row = existing[0];
   if (!row) throw new ApiError(404, 'HEADLINE_NOT_FOUND', 'Headline notice not found');
 
-  const nextStatus = !Boolean(row.is_active);
+  const nextStatus = !row.is_active;
   await pool.execute('UPDATE master_data SET is_active = ? WHERE id = ?', [nextStatus, id]);
 
   return sendSuccess(response, { id, isActive: nextStatus });
 }));
 
-headlineRouter.delete('/:id', requirePermission('MASTER_DATA_WRITE'), asyncHandler(async (request, response) => {
+headlineRouter.delete('/:id', requirePermission('MASTER_DATA_WRITE'), validate(headlineIdSchema, 'params'), asyncHandler(async (request, response) => {
   const id = request.params.id as string;
   const [res] = await pool.execute<ResultSetHeader>('DELETE FROM master_data WHERE id = ? AND category IN ("HEADLINE", "NOTICE_BOARD", "TICKER")', [id]);
   if (res.affectedRows === 0) throw new ApiError(404, 'HEADLINE_NOT_FOUND', 'Headline notice not found');
