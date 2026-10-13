@@ -259,6 +259,17 @@ async function seed(): Promise<void> {
       );
       const demoUserId = usrRows[0]!.id;
 
+      // Every network party must have its INR wallet. INSERT IGNORE keeps
+      // repeated seed runs idempotent through uq_wallet_party_currency.
+      if (['MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'].includes(u.partyType)) {
+        await connection.execute(
+          `INSERT IGNORE INTO wallets
+             (id, party_id, currency, status, available_balance, hold_balance, ledger_balance)
+           VALUES (?, ?, 'INR', 'ACTIVE', 0, 0, 0)`,
+          [randomUUID(), partyId],
+        );
+      }
+
       // Assign User Role
       await connection.execute(
         `INSERT IGNORE INTO user_roles (user_id, role_id)

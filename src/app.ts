@@ -31,6 +31,9 @@ import { auditLogRouter } from './modules/audit-logs/audit-log.routes.js';
 import { loginHistoryRouter } from './modules/login-history/login-history.routes.js';
 import { payoutChargeRouter } from './modules/payout-charges/payout-charge.routes.js';
 import { configurationRouter } from './modules/configuration/configuration.routes.js';
+import { topUpRequestRouter } from './modules/top-up-requests/top-up-request.routes.js';
+import { transactionRouter } from './modules/transactions/transaction.routes.js';
+import { settlementRouter } from './modules/settlements/settlement.routes.js';
 
 export function createApp() {
   const app = express();
@@ -116,6 +119,9 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/login-history`, loginHistoryRouter);
   app.use(`${env.API_PREFIX}/payout-charge-rules`, payoutChargeRouter);
   app.use(`${env.API_PREFIX}/configuration`, configurationRouter);
+  app.use(`${env.API_PREFIX}/top-up-requests`, topUpRequestRouter);
+  app.use(`${env.API_PREFIX}/transactions`, transactionRouter);
+  app.use(`${env.API_PREFIX}/settlements`, settlementRouter);
   app.use(`${env.API_PREFIX}/reports`, reportsRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
