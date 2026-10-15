@@ -3,8 +3,8 @@ import { authenticate, requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../shared/async-handler.js';
 import { sendSuccess } from '../../shared/response.js';
-import { createPartySchema, listPartiesSchema, partyIdSchema, reviewPartySchema, updatePartyStatusSchema } from './party.schemas.js';
-import { createParty, getParty, listParties, reviewParty, updatePartyStatus } from './party.service.js';
+import { assignPublicPartySchema, createPartySchema, listPartiesSchema, partyIdSchema, reviewPartySchema, updatePartyStatusSchema } from './party.schemas.js';
+import { assignPublicParty, createParty, getParty, listParties, reviewParty, updatePartyStatus } from './party.service.js';
 
 export const partyRouter = Router();
 partyRouter.use(authenticate);
@@ -29,4 +29,9 @@ partyRouter.patch('/:id/status', requirePermission('PARTY_STATUS_UPDATE'), valid
 partyRouter.post('/:id/review', requirePermission('PARTY_APPROVE'), validate(partyIdSchema, 'params'), validate(reviewPartySchema), asyncHandler(async (request, response) => {
   const body = reviewPartySchema.parse(request.body);
   return sendSuccess(response, await reviewParty(request.params.id as string, body.decision, body.reasonCode, body.remarks, body.version, request.auth!.userId));
+}));
+
+partyRouter.patch('/:id/assignment', requirePermission('PARTY_APPROVE'), validate(partyIdSchema, 'params'), validate(assignPublicPartySchema), asyncHandler(async (request, response) => {
+  const input = assignPublicPartySchema.parse(request.body);
+  return sendSuccess(response, await assignPublicParty(request.params.id as string, input.parentPartyId, input.version, request.auth!.userId));
 }));

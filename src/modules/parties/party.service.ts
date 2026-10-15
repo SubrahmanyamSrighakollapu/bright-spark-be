@@ -26,6 +26,9 @@ interface PartyRow extends RowDataPacket {
   created_by_user_id: string | null;
   creator_name: string | null;
   creator_role: string | null;
+  signup_source: string;
+  assigned_by_user_id: string | null;
+  assigned_at: Date | null;
 }
 
 function mapParty(row: PartyRow) {
@@ -48,6 +51,9 @@ function mapParty(row: PartyRow) {
     createdByUserId: row.created_by_user_id,
     createdByName: row.creator_name,
     createdByRole: row.creator_role,
+    signupSource: row.signup_source,
+    assignedByUserId: row.assigned_by_user_id,
+    assignedAt: row.assigned_at,
   };
 }
 
@@ -169,13 +175,16 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
 
 export async function reviewParty(id: string, decision: string, reasonCode: string | undefined, remarks: string, version: number, actorUserId: string) {
   await withTransaction(async (connection) => {
-    const [parties] = await connection.query<(RowDataPacket & { kyc_status: string; approval_status: string; account_status: string; created_at: Date })[]>(
-      `SELECT kyc_status, approval_status, account_status, created_at FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, [id],
+    const [parties] = await connection.query<(RowDataPacket & { kyc_status: string; approval_status: string; account_status: string; created_at: Date; signup_source: string; assigned_at: Date | null })[]>(
+      `SELECT kyc_status, approval_status, account_status, created_at, signup_source, assigned_at FROM parties WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, [id],
     );
     if (!parties[0]) throw new ApiError(404, 'PARTY_NOT_FOUND', 'Party was not found');
     const party = parties[0];
     if (decision === 'APPROVED' && party.kyc_status !== 'APPROVED') {
       throw new ApiError(409, 'KYC_APPROVAL_REQUIRED', 'Network approval is allowed only after KYC approval');
+    }
+    if (decision === 'APPROVED' && party.signup_source === 'PUBLIC_SELF_SERVICE' && !party.assigned_at) {
+      throw new ApiError(409, 'ADMIN_ASSIGNMENT_REQUIRED', 'Assign this public signup to the platform or a valid network parent before network approval');
     }
 
     const beforeData = {
@@ -258,5 +267,18 @@ export async function reviewParty(id: string, decision: string, reasonCode: stri
     // never propagate
   }
 
+  return getParty(id);
+}
+
+export async function assignPublicParty(id: string, parentPartyId: string | null, version: number, actorUserId: string) {
+  await withTransaction(async connection => {
+    const [rows] = await connection.query<(RowDataPacket & { party_type:string; signup_source:string })[]>('SELECT party_type,signup_source FROM parties WHERE id=? AND deleted_at IS NULL FOR UPDATE',[id]);
+    const party=rows[0];if(!party)throw new ApiError(404,'PARTY_NOT_FOUND','Party was not found');
+    if(party.signup_source!=='PUBLIC_SELF_SERVICE')throw new ApiError(409,'NOT_PUBLIC_SIGNUP','Only public signup applications use this assignment workflow');
+    if(parentPartyId){const [parents]=await connection.query<(RowDataPacket & {party_type:string;account_status:string})[]>('SELECT party_type,account_status FROM parties WHERE id=? AND deleted_at IS NULL',[parentPartyId]);const parent=parents[0];if(!parent)throw new ApiError(422,'INVALID_PARENT','Selected parent was not found');if(parent.account_status!=='ACTIVE')throw new ApiError(422,'PARENT_NOT_ACTIVE','Selected parent must be active');if(!validParentType(party.party_type,parent.party_type))throw new ApiError(422,'INVALID_HIERARCHY',`${party.party_type} cannot be assigned below ${parent.party_type}`);}
+    if(party.party_type==='MASTER_DISTRIBUTOR'&&parentPartyId)throw new ApiError(422,'INVALID_HIERARCHY','A Master Distributor is assigned directly to the platform');
+    const [result]=await connection.execute<ResultSetHeader>('UPDATE parties SET parent_party_id=?,assigned_by_user_id=?,assigned_at=CURRENT_TIMESTAMP(6),version=version+1 WHERE id=? AND version=?',[parentPartyId,actorUserId,id,version]);if(result.affectedRows!==1)throw new ApiError(409,'STALE_PARTY_VERSION','Application was updated by another user; reload and retry');
+    await writeAuditLog({action:'PUBLIC_SIGNUP_ASSIGNED',resourceType:'PARTY',resourceId:id,afterData:{parentPartyId,assignedByUserId:actorUserId}},{actorUserId},connection);
+  });
   return getParty(id);
 }

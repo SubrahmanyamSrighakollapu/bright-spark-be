@@ -38,3 +38,8 @@ export const reviewPartySchema = z.object({
   remarks: z.string().trim().min(3).max(1000),
   version: z.number().int().positive(),
 });
+
+export const assignPublicPartySchema = z.object({
+  parentPartyId: z.string().uuid().nullable(),
+  version: z.number().int().positive(),
+});

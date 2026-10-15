@@ -34,6 +34,7 @@ import { configurationRouter } from './modules/configuration/configuration.route
 import { topUpRequestRouter } from './modules/top-up-requests/top-up-request.routes.js';
 import { transactionRouter } from './modules/transactions/transaction.routes.js';
 import { settlementRouter } from './modules/settlements/settlement.routes.js';
+import { publicSignupRouter } from './modules/public-signup/public-signup.routes.js';
 
 export function createApp() {
   const app = express();
@@ -100,6 +101,7 @@ export function createApp() {
   app.use(apiRequestSink);
 
   app.use('/health', healthRouter);
+  app.use(`${env.API_PREFIX}/public/signup`, publicSignupRouter);
   app.use(`${env.API_PREFIX}/auth`, authRouter);
   app.use(`${env.API_PREFIX}/users`, userRouter);
   app.use(`${env.API_PREFIX}/parties`, partyRouter);
