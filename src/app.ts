@@ -35,6 +35,9 @@ import { topUpRequestRouter } from './modules/top-up-requests/top-up-request.rou
 import { transactionRouter } from './modules/transactions/transaction.routes.js';
 import { settlementRouter } from './modules/settlements/settlement.routes.js';
 import { publicSignupRouter } from './modules/public-signup/public-signup.routes.js';
+import { invoiceRouter } from './modules/invoices/invoice.routes.js';
+import { helpDeskRouter } from './modules/help-desk/help-desk.routes.js';
+import { qrPayInRouter } from './modules/qr-pay-in/qr-pay-in.routes.js';
 
 export function createApp() {
   const app = express();
@@ -125,6 +128,9 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/transactions`, transactionRouter);
   app.use(`${env.API_PREFIX}/settlements`, settlementRouter);
   app.use(`${env.API_PREFIX}/reports`, reportsRouter);
+  app.use(`${env.API_PREFIX}/invoices`, invoiceRouter);
+  app.use(`${env.API_PREFIX}/help-desk`, helpDeskRouter);
+  app.use(`${env.API_PREFIX}/qr-pay-in`, qrPayInRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

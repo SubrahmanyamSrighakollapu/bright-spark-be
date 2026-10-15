@@ -8,6 +8,7 @@ import { ApiError } from '../../shared/api-error.js';
 import { asyncHandler } from '../../shared/async-handler.js';
 import { contextFromAuth, writeAuditLog } from '../../shared/audit.js';
 import { sendSuccess } from '../../shared/response.js';
+import { generateTransactionInvoice } from '../invoices/invoice.service.js';
 
 export const transactionRouter = Router();
 transactionRouter.use(authenticate);
@@ -67,6 +68,9 @@ transactionRouter.post('/payin/request', asyncHandler(async(req,res)=>{
       VALUES (?,?,?,?,'PAY_IN',?,?,?,?,?,?,?,?,?,'PENDING',?,?,?,?,?)`,[id,reference,input.idempotencyKey,partyId,routes[0].method_code,input.paymentGatewayId,input.paymentMethodId,input.paymentOptionId,input.serviceCategoryId,input.serviceProductId??null,input.customerName,input.customerMobile,input.remarks??null,input.amount,charge,gst,finalCredit,JSON.stringify(snapshot)]); }
     catch(error:unknown){if(typeof error==='object'&&error!==null&&'code' in error&&error.code==='ER_DUP_ENTRY'){const [existing]=await connection.query<RowDataPacket[]>(`${selectSql} WHERE t.party_id=? AND t.idempotency_key=? LIMIT 1`,[partyId,input.idempotencyKey]);if(existing[0])return mapTransaction(existing[0]);throw new ApiError(409,'DUPLICATE_PAY_IN','This Pay-In request has already been submitted');}throw error;}
     await connection.execute(`INSERT INTO transaction_status_history (transaction_id,to_status,source,description,metadata) VALUES (?,'PENDING','USER','Pay-In created; awaiting provider integration',?)`,[id,JSON.stringify({gatewayId:input.paymentGatewayId})]);
+    await generateTransactionInvoice(connection,{transactionId:id,reference,partyId,categoryId:input.serviceCategoryId,productId:input.serviceProductId??null,
+      customerName:input.customerName,customerMobile:input.customerMobile,categoryName:category.name,productName:product?.name??null,
+      amount:input.amount,charge,gst,finalCredit,paymentMethod:routes[0].method_name});
     await writeAuditLog({action:'PAY_IN_CREATED',resourceType:'TRANSACTION',resourceId:id,afterData:{reference,status:'PENDING',amount:input.amount,finalCreditAmount:finalCredit}},contextFromAuth(req.auth),connection);
     const [rows]=await connection.query<RowDataPacket[]>(`${selectSql} WHERE t.id=?`,[id]); return mapTransaction(rows[0]!);
   }); return sendSuccess(res,result,201);
