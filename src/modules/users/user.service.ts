@@ -153,7 +153,8 @@ export async function listUsers(filters: z.infer<typeof listUsersSchema>, actor:
   const conditions: string[] = ['u.deleted_at IS NULL', 'p.deleted_at IS NULL'];
   const values: unknown[] = [];
 
-  if (!isAdmin(actor)) {
+  const isEmployeeReadOnlyScope = actor.roles.some((role) => ['SALES', 'ACCOUNTS', 'OPERATIONS'].includes(role));
+  if (!isAdmin(actor) && !isEmployeeReadOnlyScope) {
     if (!actor.partyId) throw new ApiError(403, 'NETWORK_SCOPE_REQUIRED', 'Your account is not linked to a network party');
     if (actor.roles.includes('MASTER_DISTRIBUTOR')) {
       conditions.push('(p.parent_party_id = ? OR parent.parent_party_id = ?)');

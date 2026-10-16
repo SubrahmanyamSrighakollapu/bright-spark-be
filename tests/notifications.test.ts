@@ -265,8 +265,9 @@ describe('Notifications & Communication API', () => {
         .patch(`${NOTIFICATION_BASE}/preferences/TRANSACTION_FAILED`)
         .set('Authorization', `Bearer ${READ_TOKEN}`)
         .send({ inAppEnabled: true });
-      // Either 200, or if eventCode DNE and DB fails — but NOT 422
-      expect(res.status).not.toBe(422);
+      // The request passed schema validation. A seeded database may still reject
+      // this synthetic JWT user as a missing foreign-key reference.
+      expect(res.body.error?.code).not.toBe('VALIDATION_ERROR');
     });
   });
 

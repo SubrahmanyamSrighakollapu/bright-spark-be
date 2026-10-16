@@ -94,7 +94,7 @@ export async function getAllWallets(
   filters: { role?: string | undefined; status?: string | undefined; search?: string | undefined; page?: number | undefined; pageSize?: number | undefined },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin or Accounts staff can view all system wallets');
   }
@@ -161,7 +161,7 @@ export async function getAllWallets(
 }
 
 export async function getWalletForParty(partyId: string, actor: AuthenticatedUser) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin && actor.partyId !== partyId) {
     throw new ApiError(403, 'WALLET_SCOPE_FORBIDDEN', 'You can only access your own wallet');
   }
@@ -196,7 +196,7 @@ export async function creditWallet(
   input: { amount: number; referenceType?: string | undefined; referenceId?: string | undefined; narration: string },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin or Accounts staff can credit wallet balances');
   }
@@ -309,7 +309,7 @@ export async function debitWallet(
   input: { amount: number; referenceType?: string | undefined; referenceId?: string | undefined; narration: string },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin or Accounts staff can debit wallet balances');
   }
@@ -427,7 +427,7 @@ export async function holdFunds(
   input: { mode: 'HOLD' | 'RELEASE'; amount: number; reason: string },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin or Accounts staff can manage fund holds');
   }
@@ -553,7 +553,7 @@ export async function toggleWalletStatus(
   input: { status: 'ACTIVE' | 'FROZEN'; reason: string },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin can update wallet status');
   }
@@ -590,7 +590,7 @@ export async function getLedgerForParty(
   filters: { type?: string | undefined; page?: number | undefined; pageSize?: number | undefined; fromDate?: string | undefined; toDate?: string | undefined },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin && actor.partyId !== partyId) {
     throw new ApiError(403, 'ACCESS_DENIED', 'You can only access your own ledger history');
   }
@@ -712,7 +712,7 @@ export async function getDebitRequests(
   filters: { status?: string | undefined; page?: number | undefined; pageSize?: number | undefined },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   const page = Math.max(1, filters.page || 1);
   const pageSize = Math.min(100, Math.max(1, filters.pageSize || 20));
   const offset = (page - 1) * pageSize;
@@ -781,7 +781,7 @@ export async function reviewDebitRequest(
   input: { action: 'APPROVE' | 'REJECT'; rejectionReason?: string | undefined },
   actor: AuthenticatedUser
 ) {
-  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN');
+  const isAdmin = actor.roles.includes('ADMIN') || actor.roles.includes('SUPER_ADMIN') || actor.roles.includes('ACCOUNTS');
   if (!isAdmin) {
     throw new ApiError(403, 'ACCESS_DENIED', 'Only Admin or Accounts staff can review debit requests');
   }

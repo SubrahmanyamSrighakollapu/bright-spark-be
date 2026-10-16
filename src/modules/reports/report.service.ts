@@ -276,9 +276,10 @@ export async function exportTransactionsCsv(
 // LEDGER REPORT
 // ==========================================================================
 export interface LedgerSummary {
-  totalCreditAmount: number;
-  totalDebitAmount: number;
-  balanceForward: number;
+  totalCredits: number;
+  totalDebits: number;
+  netMovement: number;
+  entryCount: number;
 }
 
 export interface LedgerReportResult {
@@ -291,7 +292,7 @@ export async function getLedgerReport(
   filters: ListByTypeFilters,
   auth: AuthenticatedUser,
 ): Promise<LedgerReportResult> {
-  const emptySummary: LedgerSummary = { totalCreditAmount: 0, totalDebitAmount: 0, balanceForward: 0 };
+  const emptySummary: LedgerSummary = { totalCredits: 0, totalDebits: 0, netMovement: 0, entryCount: 0 };
 
   try {
     const whereClauses: string[] = ['le.created_at >= ?', 'le.created_at <= ?'];
@@ -345,9 +346,17 @@ export async function getLedgerReport(
       partyId: r.party_id,
       partyName: r.party_name ?? null,
       partyType: r.party_type ?? null,
+      entityId: r.party_id,
+      entityName: r.party_name ?? 'Unknown entity',
+      entityType: r.party_type ?? 'RETAILER',
       userEmail: r.user_email ?? null,
       entryType: r.entry_type,
       amount: toNumber(r.amount),
+      direction: ['CREDIT','RELEASE','COMMISSION','REVERSAL'].includes(String(r.entry_type)) ? 'CREDIT' : 'DEBIT',
+      openingBalance: toNumber(r.available_balance_before),
+      closingBalance: toNumber(r.available_balance_after),
+      description: r.narration ?? String(r.entry_type).replaceAll('_', ' '),
+      createdBy: r.created_by_user_id ?? 'SYSTEM',
       currency: r.currency ?? 'INR',
       availableBalanceBefore: toNumber(r.available_balance_before),
       availableBalanceAfter: toNumber(r.available_balance_after),
@@ -378,9 +387,10 @@ export async function getLedgerReport(
       items,
       pagination: { page: safePage, pageSize: filters.pageSize, totalItems, totalPages },
       summary: {
-        totalCreditAmount,
-        totalDebitAmount,
-        balanceForward: totalCreditAmount - totalDebitAmount,
+        totalCredits: totalCreditAmount,
+        totalDebits: totalDebitAmount,
+        netMovement: totalCreditAmount - totalDebitAmount,
+        entryCount: totalItems,
       },
     };
   } catch (err) {
@@ -421,7 +431,7 @@ export async function exportLedgerCsv(
     'Created At',
   ];
   const summaryHeaders = ['Total Credit', 'Total Debit', 'Balance Forward'];
-  const summaryRow = [summary.totalCreditAmount, summary.totalDebitAmount, summary.balanceForward];
+  const summaryRow = [summary.totalCredits, summary.totalDebits, summary.netMovement];
   const rows: unknown[][] = [];
   rows.push(summaryHeaders);
   rows.push(summaryRow);

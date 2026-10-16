@@ -38,6 +38,7 @@ import { publicSignupRouter } from './modules/public-signup/public-signup.routes
 import { invoiceRouter } from './modules/invoices/invoice.routes.js';
 import { helpDeskRouter } from './modules/help-desk/help-desk.routes.js';
 import { qrPayInRouter } from './modules/qr-pay-in/qr-pay-in.routes.js';
+import { paymentLinkRouter, publicPaymentLinkRouter } from './modules/payment-links/payment-link.routes.js';
 
 export function createApp() {
   const app = express();
@@ -105,6 +106,7 @@ export function createApp() {
 
   app.use('/health', healthRouter);
   app.use(`${env.API_PREFIX}/public/signup`, publicSignupRouter);
+  app.use(`${env.API_PREFIX}/public/payment-links`, publicPaymentLinkRouter);
   app.use(`${env.API_PREFIX}/auth`, authRouter);
   app.use(`${env.API_PREFIX}/users`, userRouter);
   app.use(`${env.API_PREFIX}/parties`, partyRouter);
@@ -131,6 +133,7 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/invoices`, invoiceRouter);
   app.use(`${env.API_PREFIX}/help-desk`, helpDeskRouter);
   app.use(`${env.API_PREFIX}/qr-pay-in`, qrPayInRouter);
+  app.use(`${env.API_PREFIX}/payment-links`, paymentLinkRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

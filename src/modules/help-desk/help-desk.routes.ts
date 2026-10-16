@@ -12,7 +12,6 @@ import { sendSuccess } from '../../shared/response.js';
 export const helpDeskRouter = Router();
 helpDeskRouter.use(authenticate);
 const requesterRoles = ['RETAILER','DISTRIBUTOR','MASTER_DISTRIBUTOR'];
-const activeStatuses = ['OPEN','ASSIGNED','IN_PROGRESS','REOPENED'];
 const isAdmin = (roles: string[]) => roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
 const isOperations = (roles: string[]) => roles.includes('OPERATIONS') || roles.includes('SUPPORT');
 const idSchema = z.string().uuid();
@@ -66,9 +65,9 @@ helpDeskRouter.post('/tickets',asyncHandler(async(req,res)=>{
 
 helpDeskRouter.get('/tickets',asyncHandler(async(req,res)=>{
   const q=listSchema.parse(req.query);const where:string[]=[];const params:unknown[]=[];
-  if(isAdmin(req.auth!.roles)){}else if(isOperations(req.auth!.roles)){
+  if(!isAdmin(req.auth!.roles)&&isOperations(req.auth!.roles)){
     const [profiles]=await pool.query<RowDataPacket[]>('SELECT id FROM employee_profiles WHERE user_id=?',[req.auth!.userId]);if(!profiles[0])throw new ApiError(403,'EMPLOYEE_PROFILE_REQUIRED','Operations employee profile was not found');where.push('t.assigned_employee_id=?');params.push(profiles[0].id);
-  }else if(req.auth!.roles.some(role=>requesterRoles.includes(role))){where.push('t.raised_by_user_id=?');params.push(req.auth!.userId);}else throw new ApiError(403,'ACCESS_DENIED','Help Desk access denied');
+  }else if(!isAdmin(req.auth!.roles)&&req.auth!.roles.some(role=>requesterRoles.includes(role))){where.push('t.raised_by_user_id=?');params.push(req.auth!.userId);}else if(!isAdmin(req.auth!.roles))throw new ApiError(403,'ACCESS_DENIED','Help Desk access denied');
   if(q.status&&q.status!=='ALL'){where.push('t.status=?');params.push(q.status);}if(q.search){const term=`%${q.search}%`;where.push('(t.ticket_number LIKE ? OR t.category LIKE ? OR t.subcategory LIKE ? OR raiser.full_name LIKE ?)');params.push(term,term,term,term);}
   const clause=where.length?`WHERE ${where.join(' AND ')}`:'';const [counts]=await pool.query<RowDataPacket[]>(`SELECT COUNT(*) total FROM help_desk_tickets t JOIN users raiser ON raiser.id=t.raised_by_user_id ${clause}`,params);
   const [rows]=await pool.query<RowDataPacket[]>(`${selectSql} ${clause} ORDER BY t.created_at DESC LIMIT ? OFFSET ?`,[...params,q.pageSize,(q.page-1)*q.pageSize]);const total=Number(counts[0]?.total??0);

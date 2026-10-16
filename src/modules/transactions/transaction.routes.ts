@@ -12,7 +12,9 @@ import { generateTransactionInvoice } from '../invoices/invoice.service.js';
 
 export const transactionRouter = Router();
 transactionRouter.use(authenticate);
-const isAdmin = (roles: string[]) => roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
+// Platform employees with transaction responsibilities need the same read scope.
+// This helper is only used by GET/reporting routes in this module.
+const isAdmin = (roles: string[]) => roles.some((role) => ['ADMIN', 'SUPER_ADMIN', 'OPERATIONS', 'ACCOUNTS', 'SALES'].includes(role));
 const createSchema = z.object({
   customerName: z.string().trim().min(2).max(160),
   customerMobile: z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian customer mobile number'),
