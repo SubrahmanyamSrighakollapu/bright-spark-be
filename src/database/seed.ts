@@ -53,17 +53,17 @@ interface DemoUserDef {
 
 const demoUsers: DemoUserDef[] = [
   {
-    email: 'md@qinstarpay.com',
+    email: 'md@brightspark.com',
     fullName: 'Demo Master Distributor',
     mobile: '9876543210',
     roleCode: 'MASTER_DISTRIBUTOR',
     partyType: 'MASTER_DISTRIBUTOR',
     partyCode: 'MD001',
     partyName: 'Master Distributor Demo',
-    parentPartyCode: 'QSP',
+    parentPartyCode: 'BSP',
   },
   {
-    email: 'distributor@qinstarpay.com',
+    email: 'distributor@brightspark.com',
     fullName: 'Demo Distributor',
     mobile: '9876543211',
     roleCode: 'DISTRIBUTOR',
@@ -73,7 +73,7 @@ const demoUsers: DemoUserDef[] = [
     parentPartyCode: 'MD001',
   },
   {
-    email: 'retailer@qinstarpay.com',
+    email: 'retailer@brightspark.com',
     fullName: 'Demo Retailer',
     mobile: '9876543212',
     roleCode: 'RETAILER',
@@ -83,46 +83,46 @@ const demoUsers: DemoUserDef[] = [
     parentPartyCode: 'DST001',
   },
   {
-    email: 'ops@qinstarpay.com',
+    email: 'ops@brightspark.com',
     fullName: 'Demo Operations User',
     mobile: '9876543213',
     roleCode: 'OPERATIONS',
     partyType: 'PLATFORM',
-    partyCode: 'QSP',
-    partyName: 'Qin Star Pay',
+    partyCode: 'BSP',
+    partyName: 'Bright Spark',
     employeeCode: 'EMP_OPS_001',
     departmentCode: 'OPERATIONS',
   },
   {
-    email: 'accounts@qinstarpay.com',
+    email: 'accounts@brightspark.com',
     fullName: 'Demo Accounts User',
     mobile: '9876543214',
     roleCode: 'ACCOUNTS',
     partyType: 'PLATFORM',
-    partyCode: 'QSP',
-    partyName: 'Qin Star Pay',
+    partyCode: 'BSP',
+    partyName: 'Bright Spark',
     employeeCode: 'EMP_ACC_001',
     departmentCode: 'ACCOUNTS',
   },
   {
-    email: 'kyc@qinstarpay.com',
+    email: 'kyc@brightspark.com',
     fullName: 'Demo KYC Officer',
     mobile: '9876543215',
     roleCode: 'KYC',
     partyType: 'PLATFORM',
-    partyCode: 'QSP',
-    partyName: 'Qin Star Pay',
+    partyCode: 'BSP',
+    partyName: 'Bright Spark',
     employeeCode: 'EMP_KYC_001',
     departmentCode: 'KYC',
   },
   {
-    email: 'sales@qinstarpay.com',
+    email: 'sales@brightspark.com',
     fullName: 'Demo Sales Executive',
     mobile: '9876543216',
     roleCode: 'SALES',
     partyType: 'PLATFORM',
-    partyCode: 'QSP',
-    partyName: 'Qin Star Pay',
+    partyCode: 'BSP',
+    partyName: 'Bright Spark',
     employeeCode: 'EMP_SAL_001',
     departmentCode: 'SALES',
   },
@@ -164,16 +164,16 @@ async function seed(): Promise<void> {
     }
 
     // 5. System Platform Party
-    const [platformRows] = await connection.query<(RowDataPacket & { id: string })[]>('SELECT id FROM parties WHERE code = ?', ['QSP']);
-    let qspPartyId: string;
+    const [platformRows] = await connection.query<(RowDataPacket & { id: string })[]>('SELECT id FROM parties WHERE code = ?', ['BSP']);
+    let bspPartyId: string;
     if (platformRows[0]) {
-      qspPartyId = platformRows[0].id;
+      bspPartyId = platformRows[0].id;
     } else {
-      qspPartyId = randomUUID();
+      bspPartyId = randomUUID();
       await connection.execute(
         `INSERT INTO parties (id, party_type, code, display_name, legal_name, approval_status, account_status, kyc_status)
-         VALUES (?, 'PLATFORM', 'QSP', 'Qin Star Pay', 'Qin Star Pay', 'APPROVED', 'ACTIVE', 'APPROVED')`,
-        [qspPartyId]
+         VALUES (?, 'PLATFORM', 'BSP', 'Bright Spark', 'Bright Spark', 'APPROVED', 'ACTIVE', 'APPROVED')`,
+        [bspPartyId]
       );
     }
 
@@ -182,9 +182,9 @@ async function seed(): Promise<void> {
     const adminPasswordHash = await bcrypt.hash(env.SEED_ADMIN_PASSWORD, env.BCRYPT_ROUNDS);
     await connection.execute(
       `INSERT INTO users (id, party_id, email, full_name, password_hash, status)
-       VALUES (?, ?, ?, 'Qin Star Pay Super Admin', ?, 'ACTIVE')
+       VALUES (?, ?, ?, 'Bright Spark Super Admin', ?, 'ACTIVE')
        ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), password_hash = VALUES(password_hash), status = 'ACTIVE'`,
-      [adminUserId, qspPartyId, env.SEED_ADMIN_EMAIL, adminPasswordHash]
+      [adminUserId, bspPartyId, env.SEED_ADMIN_EMAIL, adminPasswordHash]
     );
     const [adminUserRows] = await connection.query<(RowDataPacket & { id: string })[]>('SELECT id FROM users WHERE email = ?', [env.SEED_ADMIN_EMAIL]);
     const adminId = adminUserRows[0]!.id;
@@ -227,8 +227,8 @@ async function seed(): Promise<void> {
       }
 
       // Upsert Party
-      let partyId = qspPartyId;
-      if (u.partyCode !== 'QSP') {
+      let partyId = bspPartyId;
+      if (u.partyCode !== 'BSP') {
         const newPartyId = randomUUID();
         await connection.execute(
           `INSERT INTO parties (id, party_type, code, display_name, legal_name, email, mobile, parent_party_id, approval_status, account_status, kyc_status)

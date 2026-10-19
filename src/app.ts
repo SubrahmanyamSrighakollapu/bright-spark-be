@@ -52,7 +52,7 @@ export function createApp() {
   if (env.SWAGGER_ENABLED) {
     app.get('/api-docs.json', (_request, response) => response.json(swaggerDocument));
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
-      customSiteTitle: 'Qin Star Pay API Documentation',
+      customSiteTitle: 'Bright Spark API Documentation',
       swaggerOptions: { persistAuthorization: true, displayRequestDuration: true },
     }));
   }

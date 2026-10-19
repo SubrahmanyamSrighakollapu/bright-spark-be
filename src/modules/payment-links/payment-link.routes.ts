@@ -105,7 +105,7 @@ publicPaymentLinkRouter.post('/:token/payments', asyncHandler(async (request, re
     if (!method) throw new ApiError(422, 'PAYMENT_METHOD_UNAVAILABLE', 'Selected payment method is unavailable');
     const [existing] = await connection.query<RowDataPacket[]>('SELECT * FROM payment_link_payments WHERE client_request_id=? LIMIT 1', [input.clientRequestId]);
     if (existing[0]) return { reference: existing[0].payment_reference, amount: Number(existing[0].amount), status: existing[0].status };
-    const id = randomUUID(); const reference = `QSPL${new Date().toISOString().slice(0,10).replaceAll('-','')}${id.slice(0,8).toUpperCase()}`;
+    const id = randomUUID(); const reference = `BSPL${new Date().toISOString().slice(0,10).replaceAll('-','')}${id.slice(0,8).toUpperCase()}`;
     await connection.execute(`INSERT INTO payment_link_payments (id,payment_reference,client_request_id,payment_link_id,party_id,payer_name,payer_mobile,payer_email,amount,payment_method_id,payment_method_code)
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`, [id, reference, input.clientRequestId, link.id, link.party_id, input.payerName, input.mobile, input.email || null, input.amount, method.id, method.method_code]);
     return { reference, amount: input.amount, status: 'PENDING' as const };

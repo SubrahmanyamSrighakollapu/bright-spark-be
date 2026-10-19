@@ -1,4 +1,4 @@
-# Qin Star Pay API / Swagger Inventory
+# Bright Spark API / Swagger Inventory
 
 Baseline generated from the active Express registrations and the centralized OpenAPI contract.
 
@@ -116,9 +116,9 @@ Module is **fully integrated at backend + frontend core layer**. Follow the patt
 
 ### 4) Test / lint commands (verification gates)
 
-- **Backend typecheck**: `cd qin-star-pay-be ; npm run typecheck` → exit 0
-- **Backend tests**: `cd qin-star-pay-be ; npm run test` → exit 0 (160 tests: 147 pass + 13 DB e2e skip-if-not-available)
-- **Backend migration**: `cd qin-star-pay-be ; npm run db:migrate` → exit 0 (011 applied)
+- **Backend typecheck**: `cd bright-spark-be ; npm run typecheck` → exit 0
+- **Backend tests**: `cd bright-spark-be ; npm run test` → exit 0 (160 tests: 147 pass + 13 DB e2e skip-if-not-available)
+- **Backend migration**: `cd bright-spark-be ; npm run db:migrate` → exit 0 (011 applied)
 - **Backend server smoke**: `curl http://localhost:4000/api/v1/audit-logs` → HTTP 401 (auth guard active)
-- **Frontend typecheck**: `cd qin-star-pay ; npx tsc -p tsconfig.json --noEmit` → exit 0
+- **Frontend typecheck**: `cd bright-spark ; npx tsc -p tsconfig.json --noEmit` → exit 0
 - **Server logs**: pino logs JSON with `req` / `res` / `responseTime` for every request; errors logged at `level:50` with stack; request-id propagated via `x-request-id` header; `api_request_logs` materialized sink writes after-response on every HTTP request (non-blocking).

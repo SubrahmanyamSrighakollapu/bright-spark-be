@@ -24,7 +24,7 @@ export async function generateTransactionInvoice(connection: PoolConnection, inp
   if (!template) return;
 
   const now = new Date();
-  const invoiceNumber = `QSP-INV-${now.toISOString().slice(0, 10).replaceAll('-', '')}-${input.reference.slice(-8)}`;
+  const invoiceNumber = `BSP-INV-${now.toISOString().slice(0, 10).replaceAll('-', '')}-${input.reference.slice(-8)}`;
   const invoiceData: Record<string, unknown> = {
     invoiceNumber, transactionReference: input.reference, invoiceDate: now.toLocaleDateString('en-IN'),
     customerName: input.customerName, customerMobile: input.customerMobile,

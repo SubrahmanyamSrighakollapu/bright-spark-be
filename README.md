@@ -1,6 +1,6 @@
-# Qin Star Pay Backend
+# Bright Spark Backend
 
-Node.js 22, Express 5, TypeScript, and MySQL 8 backend foundation for Qin Star Pay.
+Node.js 22, Express 5, TypeScript, and MySQL 8 backend foundation for Bright Spark.
 
 ## Implemented foundation
 
@@ -20,8 +20,8 @@ Payment creation/posting APIs are intentionally not enabled yet. The frontend au
 ## Local setup
 
 1. Copy `.env.example` to `.env` and change every secret/password.
-2. In phpMyAdmin, create an empty database named `qin_star_pay` with `utf8mb4_0900_ai_ci` collation (or `utf8mb4_unicode_ci` when the server does not offer MySQL 8 collations).
-3. Create or select a MySQL user that has `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `INDEX`, `REFERENCES`, and `DROP` permissions only on `qin_star_pay`.
+2. In phpMyAdmin, create an empty database named `bright_spark` with `utf8mb4_0900_ai_ci` collation (or `utf8mb4_unicode_ci` when the server does not offer MySQL 8 collations).
+3. Create or select a MySQL user that has `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `INDEX`, `REFERENCES`, and `DROP` permissions only on `bright_spark`.
 4. Put that database host, port, name, username, and password in `.env`.
 5. Install dependencies: `npm install`.
 6. Apply and track all tables: `npm run db:migrate`.
@@ -51,8 +51,8 @@ After creating the database and database user in phpMyAdmin, configure `.env`:
 ```dotenv
 DATABASE_HOST=127.0.0.1
 DATABASE_PORT=3306
-DATABASE_NAME=qin_star_pay
-DATABASE_USER=qin_star_pay
+DATABASE_NAME=bright_spark
+DATABASE_USER=bright_spark
 DATABASE_PASSWORD=your_actual_mysql_password
 ```
 

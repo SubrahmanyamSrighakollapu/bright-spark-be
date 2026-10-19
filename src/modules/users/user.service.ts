@@ -359,9 +359,9 @@ export async function createUser(input: z.infer<typeof createUserSchema>, actor:
       ]
     );
 
-    // Auto-generate temporary password: QinStar@ + last 4 digits of mobile
+    // Auto-generate temporary password: BrightSpark@ + last 4 digits of mobile
     const last4 = input.mobile && input.mobile.length >= 4 ? input.mobile.slice(-4) : '1234';
-    const generatedTempPassword = input.password || `QinStar@${last4}`;
+    const generatedTempPassword = input.password || `BrightSpark@${last4}`;
     const passwordHash = await bcrypt.hash(generatedTempPassword, 12);
 
     // Create user
@@ -471,7 +471,7 @@ export async function updateUserStatus(
           category: 'USER',
           severity: 'WARNING',
           title: 'Your account has been suspended',
-          message: `Your Qin Star Pay account has been suspended by an administrator.${baseMsg} Please contact support for assistance.`,
+          message: `Your Bright Spark account has been suspended by an administrator.${baseMsg} Please contact support for assistance.`,
           entityType: 'USER',
           entityId: user.id,
           ...(user.partyId ? { relatedEntity: user.partyId } : {}),
@@ -487,7 +487,7 @@ export async function updateUserStatus(
           category: 'USER',
           severity: 'CRITICAL',
           title: 'Your account has been disabled',
-          message: `Your Qin Star Pay account has been disabled.${baseMsg}`,
+          message: `Your Bright Spark account has been disabled.${baseMsg}`,
           entityType: 'USER',
           entityId: user.id,
           metadata: { reason: reason || null, actorUserId: actorUserId || null },
@@ -502,7 +502,7 @@ export async function updateUserStatus(
           category: 'USER',
           severity: 'SUCCESS',
           title: 'Your account is active',
-          message: `Your Qin Star Pay account has been activated. Welcome aboard!`,
+          message: `Your Bright Spark account has been activated. Welcome aboard!`,
           entityType: 'USER',
           entityId: user.id,
           metadata: { actorUserId: actorUserId || null },
@@ -989,7 +989,7 @@ export async function resetPassword(
   const last4 = user.mobile && user.mobile.length >= 4 ? user.mobile.slice(-4) : '1234';
 
   const isEmployee = user.role === 'EMPLOYEE' || user.role === 'STAFF';
-  const prefix = isEmployee ? 'QinStarEmp@' : 'QinStar@';
+  const prefix = isEmployee ? 'BrightSparkEmp@' : 'BrightSpark@';
   const tempPassword = `${prefix}${last4}`;
 
   const passwordHash = await bcrypt.hash(tempPassword, 12);

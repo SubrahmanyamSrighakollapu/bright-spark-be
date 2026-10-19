@@ -1,9 +1,9 @@
 {
-  "name": "qin-star-pay-be",
+  "name": "bright-spark-be",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Qin Star Pay backend API",
+  "description": "Bright Spark backend API",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

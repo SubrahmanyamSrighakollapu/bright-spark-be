@@ -9,7 +9,7 @@ const envSchema = z.object({
   TRUST_PROXY: z.string().trim().min(1).default('loopback'),
   DATABASE_HOST: z.string().min(1).default('127.0.0.1'),
   DATABASE_PORT: z.coerce.number().int().positive().default(3306),
-  DATABASE_NAME: z.string().min(1).default('qin_star_pay'),
+  DATABASE_NAME: z.string().min(1).default('bright_spark'),
   DATABASE_USER: z.string().min(1).default('root'),
   DATABASE_PASSWORD: z.string().default(''),
   DATABASE_CONNECTION_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
@@ -20,7 +20,7 @@ const envSchema = z.object({
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   LOG_LEVEL: z.string().default('info'),
   SWAGGER_ENABLED: z.enum(['true', 'false']).optional().transform((value) => value === undefined ? undefined : value === 'true'),
-  SEED_ADMIN_EMAIL: z.string().email().default('admin@qinstarpay.com'),
+  SEED_ADMIN_EMAIL: z.string().email().default('admin@brightspark.com'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeThisBeforeUse123!'),
 });
 

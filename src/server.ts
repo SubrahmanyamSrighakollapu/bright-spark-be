@@ -6,7 +6,7 @@ import { pool } from './database/pool.js';
 
 const server = createServer(createApp());
 
-server.listen(env.PORT, () => logger.info({ port: env.PORT, environment: env.NODE_ENV }, 'Qin Star Pay API started'));
+server.listen(env.PORT, () => logger.info({ port: env.PORT, environment: env.NODE_ENV }, 'Bright Spark API started'));
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'Graceful shutdown started');

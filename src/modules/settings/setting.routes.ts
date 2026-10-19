@@ -15,9 +15,9 @@ interface SettingRow extends RowDataPacket {
 }
 
 const defaultSettings = {
-  appName: 'Qin Star Pay',
-  companyName: 'Qin Star Pay Financial Technologies',
-  supportEmail: 'support@qinstarpay.com',
+  appName: 'Bright Spark',
+  companyName: 'Bright Spark Financial Technologies',
+  supportEmail: 'support@brightspark.com',
   supportPhone: '+91 1800-123-4567',
   gstPercentage: 18.0,
   minWalletBalanceRequirement: 500,

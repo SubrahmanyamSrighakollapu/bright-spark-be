@@ -75,7 +75,7 @@ describe('API shell', () => {
   it('allows a temporary-password session to reach password change but blocks normal APIs', async () => {
     const accessToken = jwt.sign({ partyId: null, email: 'temp@example.com', roles: ['RETAILER'],
       permissions: ['USER_READ'], mustChangePassword: true }, env.JWT_ACCESS_SECRET,
-      { subject: '00000000-0000-4000-8000-000000000001', issuer: 'qin-star-pay-api', audience: 'qin-star-pay-web', expiresIn: '5m' });
+      { subject: '00000000-0000-4000-8000-000000000001', issuer: 'bright-spark-api', audience: 'bright-spark-web', expiresIn: '5m' });
     const [changePassword, protectedApi] = await Promise.all([
       request(app).post('/api/v1/auth/change-password').set('Authorization', `Bearer ${accessToken}`).send({}),
       request(app).get('/api/v1/users').set('Authorization', `Bearer ${accessToken}`),

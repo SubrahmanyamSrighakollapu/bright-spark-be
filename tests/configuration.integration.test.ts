@@ -61,7 +61,7 @@ integration('administration configuration CRUD integration', () => {
     }
 
     const retailerLogin = await request(app).post('/api/v1/auth/login').send({
-      identifier: 'retailer@qinstarpay.com',
+      identifier: 'retailer@brightspark.com',
       password: 'Demo@123456',
     });
     expect(retailerLogin.status).toBe(200);

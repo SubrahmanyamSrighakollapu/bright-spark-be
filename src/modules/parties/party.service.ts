@@ -141,7 +141,7 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
             category: 'USER',
             severity: status === 'CLOSED' ? 'CRITICAL' : 'WARNING',
             title: status === 'SUSPENDED' ? 'Your account has been suspended' : 'Your account has been disabled',
-            message: `Your Qin Star Pay account (party) status is now ${status}.${reason ? ` Reason: ${reason}` : ''}`,
+            message: `Your Bright Spark account (party) status is now ${status}.${reason ? ` Reason: ${reason}` : ''}`,
             entityType: 'PARTY',
             entityId: id,
             metadata: { reason: reason || null, actorUserId, status },
@@ -156,7 +156,7 @@ export async function updatePartyStatus(id: string, status: string, reason: stri
             category: 'APPROVAL',
             severity: 'SUCCESS',
             title: 'Your party account is active',
-            message: `Your Qin Star Pay party account is now ACTIVE. You can begin transacting on the platform.`,
+            message: `Your Bright Spark party account is now ACTIVE. You can begin transacting on the platform.`,
             entityType: 'PARTY',
             entityId: id,
             metadata: { actorUserId, status },
@@ -251,7 +251,7 @@ export async function reviewParty(id: string, decision: string, reasonCode: stri
           type: decision === 'APPROVED' ? 'ONBOARDING_COMPLETED' : 'APPROVAL_COMPLETED',
           category: 'APPROVAL',
           severity: decision === 'APPROVED' ? 'SUCCESS' : 'WARNING',
-          title: decision === 'APPROVED' ? '🎉 Onboarding approved — welcome to Qin Star Pay' : 'Onboarding decision updated',
+          title: decision === 'APPROVED' ? '🎉 Onboarding approved — welcome to Bright Spark' : 'Onboarding decision updated',
           message: decision === 'APPROVED'
             ? `Your onboarding request has been APPROVED. Your account is ACTIVE.`
             : `Your onboarding request was not approved${remarks ? ` — ${remarks}` : '.'}`,

@@ -52,9 +52,9 @@ const configurationPaths = Object.fromEntries(configurationResources.flatMap((re
 const definition = {
   openapi: '3.1.0',
   info: {
-    title: 'Qin Star Pay API',
+    title: 'Bright Spark API',
     version: '0.1.0',
-    description: 'Interactive contract for the Qin Star Pay payment operations backend. Only currently implemented APIs are documented.',
+    description: 'Interactive contract for the Bright Spark payment operations backend. Only currently implemented APIs are documented.',
   },
   servers: [{ url: `http://localhost:${env.PORT}`, description: 'Local development server' }],
   tags: [
@@ -122,7 +122,7 @@ const definition = {
       post: {
         operationId: 'login', tags: ['Authentication'], summary: 'Authenticate a user',
         description: 'Validates credentials and returns a short-lived JWT access token plus a rotating refresh token. Repeated failures can temporarily lock the account.',
-        requestBody: { required: true, content: json(ref('LoginRequest'), { identifier: 'admin@qinstarpay.com', password: 'ExamplePassword123!' }) },
+        requestBody: { required: true, content: json(ref('LoginRequest'), { identifier: 'admin@brightspark.com', password: 'ExamplePassword123!' }) },
         responses: {
           ...success('Authentication succeeded.', ref('LoginResult')),
           '401': error('Credentials are invalid.'), '403': error('Account is not active.'), '422': { $ref: '#/components/responses/ValidationError' },

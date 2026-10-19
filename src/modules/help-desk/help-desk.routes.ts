@@ -52,7 +52,7 @@ const mapTicket=(r:RowDataPacket)=>({id:r.id,ticketId:r.ticket_number,category:r
 helpDeskRouter.post('/tickets',asyncHandler(async(req,res)=>{
   if(!req.auth!.roles.some(role=>requesterRoles.includes(role)))throw new ApiError(403,'REQUESTER_ONLY','Only network users can raise Help Desk tickets');
   const input=createSchema.parse(req.body);const result=await withTransaction(async connection=>{
-    const id=randomUUID();const ticketNumber=`QSP-HD-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${id.slice(0,8).toUpperCase()}`;
+    const id=randomUUID();const ticketNumber=`BSP-HD-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${id.slice(0,8).toUpperCase()}`;
     const employeeId=await autoAssignee(connection);const status=employeeId?'ASSIGNED':'OPEN';
     await connection.execute(`INSERT INTO help_desk_tickets (id,ticket_number,raised_by_user_id,raised_by_party_id,category,subcategory,description,status,assigned_employee_id,assignment_method,assigned_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,${employeeId?'UTC_TIMESTAMP(6)':'NULL'})`,[id,ticketNumber,req.auth!.userId,req.auth!.partyId,input.category,input.subcategory,input.description,status,employeeId,employeeId?'AUTO_WORKLOAD_ROUND_ROBIN':null]);

@@ -18,8 +18,8 @@ import {
 import type { AuthenticatedUser } from './auth.types.js';
 import { dispatchEvent } from '../notifications/notification.service.js';
 
-const issuer = 'qin-star-pay-api';
-const audience = 'qin-star-pay-web';
+const issuer = 'bright-spark-api';
+const audience = 'bright-spark-web';
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -476,7 +476,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
         category: 'USER',
         severity: 'WARNING',
         title: 'Your password was changed',
-        message: 'Your Qin Star Pay account password was just updated. If you did not perform this action, contact support immediately.',
+        message: 'Your Bright Spark account password was just updated. If you did not perform this action, contact support immediately.',
         entityType: 'USER',
         entityId: userId,
         metadata: { ip: ipAddress || null, userAgent: userAgent || null },

@@ -25,8 +25,8 @@ function makeToken(claims: {
     env.JWT_ACCESS_SECRET,
     {
       subject: claims.userId,
-      issuer: 'qin-star-pay-api',
-      audience: 'qin-star-pay-web',
+      issuer: 'bright-spark-api',
+      audience: 'bright-spark-web',
       expiresIn: '15m',
     },
   );

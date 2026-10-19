@@ -73,7 +73,7 @@ employeeRouter.get('/', requirePermission('EMPLOYEE_READ'), validate(listEmploye
 employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEmployeeSchema), asyncHandler(async (request, response) => {
   const input = createEmployeeSchema.parse(request.body);
   const employeeId = randomUUID(); const userId = randomUUID();
-  const rawPassword = `QinStarEmp@${input.mobile.slice(-4)}`;
+  const rawPassword = `BrightSparkEmp@${input.mobile.slice(-4)}`;
   const passwordHash = await bcrypt.hash(rawPassword, env.BCRYPT_ROUNDS);
   let employeeCode = '';
   let roleId = 0;
@@ -177,7 +177,7 @@ employeeRouter.patch('/:id/status', requirePermission('EMPLOYEE_UPDATE'), valida
 employeeRouter.post('/:id/reset-password', requirePermission('EMPLOYEE_UPDATE'), validate(employeeIdSchema, 'params'), validate(resetEmployeePasswordSchema), asyncHandler(async (request, response) => {
   const id = request.params.id as string;
   const input = resetEmployeePasswordSchema.parse(request.body);
-  const temporaryPassword = input.password ?? `Qsp@${randomBytes(8).toString('base64url')}9`;
+  const temporaryPassword = input.password ?? `Bsp@${randomBytes(8).toString('base64url')}9`;
   const passwordHash = await bcrypt.hash(temporaryPassword, env.BCRYPT_ROUNDS);
   await withTransaction(async (connection) => {
     const [employees] = await connection.query<(RowDataPacket & { user_id: string })[]>(
