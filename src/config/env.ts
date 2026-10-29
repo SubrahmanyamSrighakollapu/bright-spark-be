@@ -22,6 +22,12 @@ const envSchema = z.object({
   SWAGGER_ENABLED: z.enum(['true', 'false']).optional().transform((value) => value === undefined ? undefined : value === 'true'),
   SEED_ADMIN_EMAIL: z.string().email().default('admin@brightspark.com'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('ChangeThisBeforeUse123!'),
+  NOBLE_AEPS_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  NOBLE_API_KEY: z.string().trim().transform((value) => value.replace(/\s+/g, '')).optional(),
+  NOBLE_API_VALUE: z.string().trim().optional(),
+  NOBLE_AUTH_BASE_URL: z.string().url().default('https://service.noblewebstudio.in/api/v1.0'),
+  NOBLE_AEPS_BASE_URL: z.string().url().default('https://aeapi.noblewebstudio.in/v2.0/aeps'),
+  NOBLE_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(30000),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -31,6 +37,10 @@ if (!parsed.success) {
 
 if (parsed.data.NODE_ENV === 'production' && parsed.data.JWT_ACCESS_SECRET.includes('development')) {
   throw new Error('Production JWT secrets must be explicitly configured');
+}
+
+if (parsed.data.NOBLE_AEPS_ENABLED && (!parsed.data.NOBLE_API_KEY || !parsed.data.NOBLE_API_VALUE)) {
+  throw new Error('NOBLE_API_KEY and NOBLE_API_VALUE are required when NOBLE_AEPS_ENABLED=true');
 }
 
 export const env = {

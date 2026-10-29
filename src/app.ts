@@ -39,6 +39,7 @@ import { invoiceRouter } from './modules/invoices/invoice.routes.js';
 import { helpDeskRouter } from './modules/help-desk/help-desk.routes.js';
 import { qrPayInRouter } from './modules/qr-pay-in/qr-pay-in.routes.js';
 import { paymentLinkRouter, publicPaymentLinkRouter } from './modules/payment-links/payment-link.routes.js';
+import { aepsRouter } from './modules/aeps/aeps.routes.js';
 
 export function createApp() {
   const app = express();
@@ -134,6 +135,7 @@ export function createApp() {
   app.use(`${env.API_PREFIX}/help-desk`, helpDeskRouter);
   app.use(`${env.API_PREFIX}/qr-pay-in`, qrPayInRouter);
   app.use(`${env.API_PREFIX}/payment-links`, paymentLinkRouter);
+  app.use(`${env.API_PREFIX}/aeps`, aepsRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;

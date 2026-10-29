@@ -1,0 +1,61 @@
+CREATE TABLE IF NOT EXISTS aeps_retailer_agents (
+  id CHAR(36) PRIMARY KEY,
+  party_id CHAR(36) NOT NULL UNIQUE,
+  provider VARCHAR(40) NOT NULL DEFAULT 'NOBLE',
+  unique_agent_id VARCHAR(150) NULL UNIQUE,
+  onboarding_transaction_id VARCHAR(100) NULL UNIQUE,
+  onboarding_status ENUM('NOT_STARTED','PENDING','SUCCESS','FAILED') NOT NULL DEFAULT 'NOT_STARTED',
+  kyc_status ENUM('UNKNOWN','REQUIRED','PENDING','COMPLETED','FAILED') NOT NULL DEFAULT 'UNKNOWN',
+  daily_2fa_status ENUM('UNKNOWN','REQUIRED','COMPLETED','FAILED') NOT NULL DEFAULT 'UNKNOWN',
+  daily_2fa_completed_at TIMESTAMP(6) NULL,
+  last_provider_code VARCHAR(80) NULL,
+  last_provider_message VARCHAR(500) NULL,
+  last_loaded_at TIMESTAMP(6) NULL,
+  created_by_user_id CHAR(36) NOT NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT fk_aeps_agent_party FOREIGN KEY (party_id) REFERENCES parties(id),
+  CONSTRAINT fk_aeps_agent_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+  INDEX idx_aeps_agent_status (onboarding_status, kyc_status, daily_2fa_status)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS aeps_transactions (
+  id CHAR(36) PRIMARY KEY,
+  transaction_id VARCHAR(100) NOT NULL UNIQUE,
+  party_id CHAR(36) NOT NULL,
+  agent_id CHAR(36) NOT NULL,
+  service_type ENUM('CASH_WITHDRAWAL','BALANCE_ENQUIRY','MINI_STATEMENT') NOT NULL,
+  bank_name VARCHAR(160) NOT NULL,
+  bank_iin VARCHAR(20) NOT NULL,
+  masked_aadhaar VARCHAR(20) NOT NULL,
+  masked_mobile VARCHAR(20) NOT NULL,
+  amount DECIMAL(15,2) NULL,
+  status ENUM('PENDING','SUCCESS','FAILED','UNKNOWN') NOT NULL DEFAULT 'PENDING',
+  provider_reference VARCHAR(150) NULL,
+  rrn VARCHAR(100) NULL,
+  provider_code VARCHAR(80) NULL,
+  provider_message VARCHAR(500) NULL,
+  customer_bank_balance DECIMAL(15,2) NULL,
+  statement_json JSON NULL,
+  request_fingerprint CHAR(64) NOT NULL,
+  created_by_user_id CHAR(36) NOT NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  completed_at TIMESTAMP(6) NULL,
+  CONSTRAINT fk_aeps_transaction_party FOREIGN KEY (party_id) REFERENCES parties(id),
+  CONSTRAINT fk_aeps_transaction_agent FOREIGN KEY (agent_id) REFERENCES aeps_retailer_agents(id),
+  CONSTRAINT fk_aeps_transaction_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id),
+  INDEX idx_aeps_transaction_party_created (party_id, created_at),
+  INDEX idx_aeps_transaction_status_created (status, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS aeps_transaction_status_history (
+  id CHAR(36) PRIMARY KEY,
+  aeps_transaction_id CHAR(36) NOT NULL,
+  status ENUM('PENDING','SUCCESS','FAILED','UNKNOWN') NOT NULL,
+  provider_code VARCHAR(80) NULL,
+  provider_message VARCHAR(500) NULL,
+  checked_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  CONSTRAINT fk_aeps_status_transaction FOREIGN KEY (aeps_transaction_id) REFERENCES aeps_transactions(id),
+  INDEX idx_aeps_status_transaction_checked (aeps_transaction_id, checked_at)
+) ENGINE=InnoDB;
