@@ -4,7 +4,7 @@ import { createEmployeeSchema, resetEmployeePasswordSchema, updateEmployeeSchema
 describe('employee API validation', () => {
   it('accepts the complete employee creation contract including shift', () => {
     const result = createEmployeeSchema.safeParse({
-      employeeCode: 'EMP_OPS_001', fullName: 'Operations User', email: 'ops@example.com',
+      employeeCode: 'EMPOPS001', fullName: 'Operations User', email: 'ops@example.com',
       mobile: '9876543210', departmentCode: 'OPERATIONS', roleId: 5,
       joiningDate: '2026-10-08', shiftCode: 'EVENING',
     });

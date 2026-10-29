@@ -90,7 +90,7 @@ const demoUsers: DemoUserDef[] = [
     partyType: 'PLATFORM',
     partyCode: 'BSP',
     partyName: 'Bright Spark',
-    employeeCode: 'EMP_OPS_001',
+    employeeCode: 'EMPOPS001',
     departmentCode: 'OPERATIONS',
   },
   {
@@ -101,7 +101,7 @@ const demoUsers: DemoUserDef[] = [
     partyType: 'PLATFORM',
     partyCode: 'BSP',
     partyName: 'Bright Spark',
-    employeeCode: 'EMP_ACC_001',
+    employeeCode: 'EMPACC001',
     departmentCode: 'ACCOUNTS',
   },
   {
@@ -112,7 +112,7 @@ const demoUsers: DemoUserDef[] = [
     partyType: 'PLATFORM',
     partyCode: 'BSP',
     partyName: 'Bright Spark',
-    employeeCode: 'EMP_KYC_001',
+    employeeCode: 'EMPKYC001',
     departmentCode: 'KYC',
   },
   {
@@ -123,7 +123,7 @@ const demoUsers: DemoUserDef[] = [
     partyType: 'PLATFORM',
     partyCode: 'BSP',
     partyName: 'Bright Spark',
-    employeeCode: 'EMP_SAL_001',
+    employeeCode: 'EMPSAL001',
     departmentCode: 'SALES',
   },
 ];

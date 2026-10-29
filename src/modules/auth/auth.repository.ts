@@ -16,7 +16,19 @@ interface UserRow extends RowDataPacket {
   permissions: string | null;
 }
 
-export async function findUserForAuthentication(identifier: string): Promise<UserAuthRecord | null> {
+export async function findUserForAuthentication(identifier: string, forLogin = false): Promise<UserAuthRecord | null> {
+  // Internal token/password flows resolve strictly by UUID. Public login uses
+  // email, or an individual employee/network code (never the shared platform code).
+  const lookup = forLogin ? `(
+    LOWER(u.email) = LOWER(?) OR (
+      NOT EXISTS (SELECT 1 FROM user_roles ar JOIN roles admin_role ON admin_role.id = ar.role_id
+                  WHERE ar.user_id = u.id AND admin_role.code IN ('ADMIN', 'SUPER_ADMIN'))
+      AND (u.mobile = ?
+        OR EXISTS (SELECT 1 FROM employee_profiles ep WHERE ep.user_id = u.id AND ep.employee_code = ?)
+        OR EXISTS (SELECT 1 FROM parties party WHERE party.id = u.party_id
+                   AND party.party_type IN ('MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER') AND party.code = ?))
+    )
+  )` : 'u.id = ?';
   const [rows] = await pool.query<UserRow[]>(`
     SELECT u.id, u.party_id, u.email, u.full_name, u.password_hash, u.status, u.must_change_password,
            u.failed_login_count, u.locked_until,
@@ -27,10 +39,12 @@ export async function findUserForAuthentication(identifier: string): Promise<Use
     LEFT JOIN roles r ON r.id = ur.role_id AND r.is_active = TRUE
     LEFT JOIN role_permissions rp ON rp.role_id = r.id
     LEFT JOIN permissions p ON p.id = rp.permission_id
-    WHERE u.deleted_at IS NULL AND (u.id = ? OR LOWER(u.email) = LOWER(?) OR u.mobile = ?)
+    WHERE u.deleted_at IS NULL AND ${lookup}
     GROUP BY u.id
-    LIMIT 1
-  `, [identifier, identifier, identifier]);
+    LIMIT 2
+  `, forLogin ? [identifier.trim(), identifier.trim(), identifier.trim(), identifier.trim()] : [identifier]);
+  // Fail closed if identifiers across different namespaces match two accounts.
+  if (rows.length !== 1) return null;
   const row = rows[0];
   if (!row) return null;
   return {

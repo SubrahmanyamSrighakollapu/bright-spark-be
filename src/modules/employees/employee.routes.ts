@@ -96,9 +96,9 @@ employeeRouter.post('/', requirePermission('EMPLOYEE_CREATE'), validate(createEm
     if (!roles[0]) throw new ApiError(422, 'DEPARTMENT_ROLE_NOT_CONFIGURED', 'The selected department does not have an active employee role');
     roleId = roles[0].id;
     const prefixes: Record<string, string> = { OPERATIONS: 'OPS', ACCOUNTS: 'ACC', KYC: 'KYC', SALES: 'SAL' };
-    const prefix = `EMP_${prefixes[input.departmentCode] ?? input.departmentCode.slice(0, 3)}_`;
+    const prefix = `EMP${(prefixes[input.departmentCode] ?? input.departmentCode.slice(0, 3)).replace(/_/g, '')}`;
     const [lastCodes] = await connection.query<(RowDataPacket & { employee_code: string })[]>(
-      'SELECT employee_code FROM employee_profiles WHERE employee_code LIKE ? ORDER BY employee_code DESC LIMIT 1 FOR UPDATE', [`${prefix}%`],
+      'SELECT employee_code FROM employee_profiles WHERE employee_code REGEXP ? ORDER BY CAST(SUBSTRING(employee_code, ?) AS UNSIGNED) DESC LIMIT 1 FOR UPDATE', [`^${prefix}[0-9]+$`, prefix.length + 1],
     );
     const lastNumber = Number.parseInt(lastCodes[0]?.employee_code.slice(prefix.length) ?? '0', 10) || 0;
     employeeCode = `${prefix}${String(lastNumber + 1).padStart(3, '0')}`;
