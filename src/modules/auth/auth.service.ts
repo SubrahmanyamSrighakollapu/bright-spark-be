@@ -88,7 +88,7 @@ async function buildTokenPair(user: AuthenticatedUser, context: RequestContext) 
 }
 
 export async function login(identifier: string, password: string, ctx: RequestContext) {
-  const user = await findUserForAuthentication(identifier);
+  const user = await findUserForAuthentication(identifier, true);
   const ipAddress = getIp(ctx);
   const userAgent = getUserAgent(ctx);
   const requestId = ctx?.requestId;
@@ -122,7 +122,7 @@ export async function login(identifier: string, password: string, ctx: RequestCo
       },
       { requestId, ipAddress, userAgent },
     );
-    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email, mobile, or password');
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email, user ID, employee ID, mobile, or password');
   }
 
   const resolvedUserId = user.userId;
@@ -199,7 +199,7 @@ export async function login(identifier: string, password: string, ctx: RequestCo
       },
       { actorUserId: resolvedUserId, requestId, ipAddress, userAgent },
     );
-    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email, mobile, or password');
+    throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email, user ID, employee ID, mobile, or password');
   }
 
   await recordSuccessfulLogin(user.userId);
